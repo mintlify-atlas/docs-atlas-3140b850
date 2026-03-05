@@ -1,0 +1,206 @@
+{
+  "projectType": "framework",
+  "projectName": ".NET Aspire",
+  "projectDescription": "A cloud-ready framework for building observable, production-ready distributed applications with .NET",
+  "theme": "aspen",
+  "primaryColor": "#7052db",
+  "lightColor": "#ac9aec",
+  "darkColor": "#d8c1fa",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/app-model",
+              "concepts/service-discovery",
+              "concepts/dashboard",
+              "concepts/telemetry"
+            ]
+          },
+          {
+            "group": "Building Apps",
+            "pages": [
+              "guides/hosting-basics",
+              "guides/resources",
+              "guides/dependencies",
+              "guides/configuration",
+              "guides/environment-variables"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/overview",
+              "deployment/azure",
+              "deployment/kubernetes"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "CLI Commands",
+            "pages": [
+              "cli/overview",
+              "cli/init",
+              "cli/new",
+              "cli/run",
+              "cli/add",
+              "cli/deploy"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Hosting Integrations",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "hosting/overview"
+            ]
+          },
+          {
+            "group": "Databases",
+            "pages": [
+              "hosting/postgres",
+              "hosting/sql-server",
+              "hosting/redis",
+              "hosting/mongodb"
+            ]
+          },
+          {
+            "group": "Messaging",
+            "pages": [
+              "hosting/rabbitmq",
+              "hosting/kafka"
+            ]
+          },
+          {
+            "group": "Azure",
+            "pages": [
+              "hosting/azure-overview",
+              "hosting/azure-cosmos-db",
+              "hosting/azure-storage",
+              "hosting/azure-service-bus"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Client Integrations",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "components/overview"
+            ]
+          },
+          {
+            "group": "Databases",
+            "pages": [
+              "components/npgsql",
+              "components/sql-client",
+              "components/stackexchange-redis",
+              "components/mongodb"
+            ]
+          },
+          {
+            "group": "Messaging",
+            "pages": [
+              "components/rabbitmq",
+              "components/kafka"
+            ]
+          },
+          {
+            "group": "Azure",
+            "pages": [
+              "components/azure-cosmos",
+              "components/azure-storage",
+              "components/azure-service-bus"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/distributed-application",
+              "api/resource-builder",
+              "api/resource-interfaces"
+            ]
+          },
+          {
+            "group": "Hosting",
+            "pages": [
+              "api/hosting-extensions",
+              "api/container-resource",
+              "api/project-resource"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Code-first distributed application model",
+    "Built-in service discovery and orchestration",
+    "Observable telemetry with dashboard",
+    "40+ integration packages for databases, messaging, and cloud services",
+    "Deploy to Kubernetes, Azure, or any cloud platform",
+    "Multi-language support (C#, Python, TypeScript, Go, Java, Rust)",
+    "Native CLI for project scaffolding and management",
+    "Hot reload and local development experience"
+  ],
+  "publicApiSurface": [
+    "DistributedApplication.CreateBuilder()",
+    "IDistributedApplicationBuilder.AddProject<T>()",
+    "IDistributedApplicationBuilder.AddContainer()",
+    "IDistributedApplicationBuilder.AddPostgres()",
+    "IDistributedApplicationBuilder.AddRedis()",
+    "IDistributedApplicationBuilder.AddSqlServer()",
+    "IDistributedApplicationBuilder.AddMongoDB()",
+    "IDistributedApplicationBuilder.AddRabbitMQ()",
+    "IDistributedApplicationBuilder.AddKafka()",
+    "IDistributedApplicationBuilder.AddNpmApp()",
+    "IResourceBuilder<T>.WithReference()",
+    "IResourceBuilder<T>.WithEnvironment()",
+    "IResourceBuilder<T>.WithEndpoint()",
+    "IResourceBuilder<T>.WithHttpEndpoint()",
+    "IResourceBuilder<T>.WithHttpsEndpoint()",
+    "IResourceBuilder<T>.WithExternalHttpEndpoints()",
+    "IResource",
+    "ContainerResource",
+    "ProjectResource",
+    "ExecutableResource",
+    "EndpointReference",
+    "ReferenceExpression",
+    "aspire init",
+    "aspire new",
+    "aspire run",
+    "aspire add",
+    "aspire deploy",
+    "aspire config",
+    "aspire ps",
+    "aspire logs",
+    "aspire stop",
+    "aspire wait",
+    "aspire doctor"
+  ]
+}
