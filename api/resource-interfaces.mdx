@@ -1,0 +1,389 @@
+---
+title: IResource and Related Interfaces
+description: Core interfaces that define resource contracts and capabilities
+---
+
+Resources in .NET Aspire are defined by a set of interfaces that declare their capabilities. Understanding these interfaces is key to working with the resource model and creating custom resources.
+
+## IResource
+
+The base interface that all resources must implement.
+
+```csharp
+public interface IResource
+{
+    string Name { get; }
+    ResourceAnnotationCollection Annotations { get; }
+}
+```
+
+### Properties
+
+<ResponseField name="Name" type="string" required>
+  The unique name of the resource within the application. Names are case-insensitive and must be unique.
+</ResponseField>
+
+<ResponseField name="Annotations" type="ResourceAnnotationCollection" required>
+  A collection of annotations that provide metadata, configuration, and behavior to the resource.
+</ResponseField>
+
+### Creating a Custom Resource
+
+```csharp Custom Resource
+public class MyCustomResource : Resource, IResourceWithConnectionString
+{
+    public MyCustomResource(string name) : base(name)
+    {
+    }
+
+    public ReferenceExpression ConnectionStringExpression => 
+        ReferenceExpression.Create($"Server={Name};Database=mydb");
+}
+
+// Usage
+var builder = DistributedApplication.CreateBuilder(args);
+var custom = new MyCustomResource("mycustom");
+builder.AddResource(custom);
+```
+
+## Capability Interfaces
+
+Resources implement one or more capability interfaces to declare what operations they support.
+
+### IResourceWithEnvironment
+
+Indicates the resource supports environment variables.
+
+```csharp
+public interface IResourceWithEnvironment : IResource
+{
+}
+```
+
+Resources implementing this interface can use:
+- `.WithEnvironment()`
+- `.WithEnvironment(callback)`
+
+**Implemented by:** `ContainerResource`, `ProjectResource`, `ExecutableResource`
+
+```csharp Example
+builder.AddContainer("myapp", "myapp")  // IResourceWithEnvironment
+       .WithEnvironment("KEY", "value");
+```
+
+### IResourceWithArgs
+
+Indicates the resource accepts command-line arguments.
+
+```csharp
+public interface IResourceWithArgs : IResource
+{
+}
+```
+
+Resources implementing this interface can use:
+- `.WithArgs()`
+- `.WithArgs(callback)`
+
+**Implemented by:** `ContainerResource`, `ProjectResource`, `ExecutableResource`
+
+```csharp Example
+builder.AddExecutable("tool", "dotnet")
+       .WithArgs("run", "--configuration", "Release");
+```
+
+### IResourceWithEndpoints
+
+Indicates the resource exposes network endpoints.
+
+```csharp
+public interface IResourceWithEndpoints : IResource
+{
+}
+```
+
+Resources implementing this interface can use:
+- `.WithEndpoint()`
+- `.WithHttpEndpoint()`
+- `.WithHttpsEndpoint()`
+- `.GetEndpoint()`
+
+**Implemented by:** `ContainerResource`, `ProjectResource`
+
+```csharp Example
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithHttpsEndpoint(port: 8443);
+
+var endpoint = api.GetEndpoint("https");
+```
+
+### IResourceWithConnectionString
+
+Indicates the resource provides a connection string.
+
+```csharp
+public interface IResourceWithConnectionString : IResource
+{
+    ReferenceExpression ConnectionStringExpression { get; }
+}
+```
+
+<ResponseField name="ConnectionStringExpression" type="ReferenceExpression" required>
+  An expression that resolves to the connection string at runtime. May reference endpoints, parameters, or other resources.
+</ResponseField>
+
+**Implemented by:** Database resources (PostgreSQL, SQL Server, Redis, MongoDB, etc.)
+
+```csharp Example
+var postgres = builder.AddPostgres("postgres");
+var db = postgres.AddDatabase("mydb");  // IResourceWithConnectionString
+
+builder.AddProject<Projects.Api>("api")
+       .WithReference(db);  // Injects connection string
+```
+
+### IResourceWithServiceDiscovery
+
+Indicates the resource supports service discovery for inter-service communication.
+
+```csharp
+public interface IResourceWithServiceDiscovery : IResourceWithEndpoints
+{
+}
+```
+
+Resources implementing this interface automatically inject service discovery environment variables when referenced.
+
+**Implemented by:** `ProjectResource`
+
+```csharp Example
+var backend = builder.AddProject<Projects.Backend>("backend");
+
+// Injects service discovery variables like:
+// services__backend__https__0=https://localhost:7001
+builder.AddProject<Projects.Frontend>("frontend")
+       .WithReference(backend);
+```
+
+### IResourceWithWaitSupport
+
+Indicates the resource supports waiting for specific conditions before starting dependent resources.
+
+```csharp
+public interface IResourceWithWaitSupport : IResource
+{
+}
+```
+
+Resources implementing this interface can use:
+- `.WaitFor()`
+- `.WaitForCompletion()`
+
+**Implemented by:** Most resources including containers, projects, and executables
+
+```csharp Example
+var migration = builder.AddExecutable("migration", "dotnet")
+                       .WithArgs("ef", "database", "update");
+
+builder.AddProject<Projects.Api>("api")
+       .WaitFor(migration);  // Wait for migration to complete
+```
+
+### IResourceWithProbes
+
+Indicates the resource supports health, readiness, and startup probes (experimental).
+
+```csharp
+public interface IResourceWithProbes : IResource
+{
+}
+```
+
+**Implemented by:** `ContainerResource`, `ProjectResource`
+
+### IResourceWithParameters
+
+Indicates the resource has parameters that can be configured.
+
+```csharp
+public interface IResourceWithParameters : IResource
+{
+}
+```
+
+**Implemented by:** `ParameterResource`
+
+## Resource Base Classes
+
+Aspire provides base classes for common resource patterns.
+
+### Resource
+
+The abstract base class that most resources inherit from.
+
+```csharp
+public abstract class Resource : IResource
+{
+    protected Resource(string name)
+    {
+        Name = name;
+        Annotations = new ResourceAnnotationCollection();
+    }
+
+    public string Name { get; }
+    public ResourceAnnotationCollection Annotations { get; }
+}
+```
+
+### ContainerResource
+
+Represents a Docker container.
+
+```csharp
+public class ContainerResource : Resource, 
+    IResourceWithEnvironment,
+    IResourceWithArgs,
+    IResourceWithEndpoints,
+    IResourceWithWaitSupport,
+    IResourceWithProbes
+{
+    public ContainerResource(string name, string? entrypoint = null);
+    
+    public string? Entrypoint { get; set; }
+}
+```
+
+See [ContainerResource](/api/container-resource) for detailed documentation.
+
+### ProjectResource
+
+Represents a .NET project.
+
+```csharp
+public class ProjectResource : Resource,
+    IResourceWithEnvironment,
+    IResourceWithArgs,
+    IResourceWithServiceDiscovery,
+    IResourceWithWaitSupport,
+    IResourceWithProbes
+{
+    public ProjectResource(string name);
+}
+```
+
+See [ProjectResource](/api/project-resource) for detailed documentation.
+
+### ExecutableResource
+
+Represents an executable program.
+
+```csharp
+public class ExecutableResource : Resource,
+    IResourceWithEnvironment,
+    IResourceWithArgs,
+    IResourceWithEndpoints,
+    IResourceWithWaitSupport
+{
+    public ExecutableResource(string name, string command, string workingDirectory);
+}
+```
+
+### ParameterResource
+
+Represents a configurable parameter.
+
+```csharp
+public class ParameterResource : Resource,
+    IResourceWithParameters,
+    IManifestExpressionProvider,
+    IValueProvider
+{
+    public bool Secret { get; }
+    public ParameterDefault? Default { get; }
+}
+```
+
+## Interface Composition
+
+Resources often implement multiple interfaces to declare their full set of capabilities:
+
+```csharp Container Capabilities
+// A container implements:
+ContainerResource : 
+    IResource,                  // Base resource
+    IResourceWithEnvironment,   // Can set environment variables
+    IResourceWithArgs,          // Can pass command-line arguments
+    IResourceWithEndpoints,     // Exposes network endpoints
+    IResourceWithWaitSupport,   // Can wait for conditions
+    IResourceWithProbes         // Supports health probes
+```
+
+```csharp Project Capabilities
+// A .NET project implements:
+ProjectResource :
+    IResource,                  // Base resource
+    IResourceWithEnvironment,   // Can set environment variables
+    IResourceWithArgs,          // Can pass command-line arguments
+    IResourceWithServiceDiscovery, // Supports service discovery
+    IResourceWithWaitSupport,   // Can wait for conditions
+    IResourceWithProbes         // Supports health probes
+```
+
+## Type Checking and Casting
+
+You can check which interfaces a resource implements:
+
+```csharp Runtime Type Checking
+IResource resource = GetResource();
+
+if (resource is IResourceWithConnectionString connectionStringResource)
+{
+    var connectionString = await connectionStringResource
+        .GetConnectionStringAsync();
+}
+
+if (resource is IResourceWithEndpoints endpointsResource)
+{
+    var endpoints = endpointsResource.GetEndpoints();
+}
+```
+
+## Creating Custom Resource Types
+
+```csharp Full Custom Resource Example
+public class MongoDbResource : Resource, 
+    IResourceWithConnectionString,
+    IResourceWithEndpoints
+{
+    public MongoDbResource(string name) : base(name)
+    {
+    }
+
+    public ReferenceExpression ConnectionStringExpression =>
+        ReferenceExpression.Create(
+            $"mongodb://{GetEndpoint("tcp").Property(EndpointProperty.Host)}:" +
+            $"{GetEndpoint("tcp").Property(EndpointProperty.Port)}"
+        );
+}
+
+// Extension method for builder
+public static class MongoDbResourceBuilderExtensions
+{
+    public static IResourceBuilder<MongoDbResource> AddMongoDb(
+        this IDistributedApplicationBuilder builder, 
+        string name)
+    {
+        var resource = new MongoDbResource(name);
+        return builder.AddResource(resource)
+                      .WithImage("mongo")
+                      .WithEndpoint(targetPort: 27017, name: "tcp");
+    }
+}
+```
+
+## Related APIs
+
+- [DistributedApplication](/api/distributed-application) - Creating applications
+- [IResourceBuilder](/api/resource-builder) - Configuring resources
+- [ContainerResource](/api/container-resource) - Container resource details
+- [ProjectResource](/api/project-resource) - .NET project resource details

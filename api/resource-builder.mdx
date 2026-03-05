@@ -1,0 +1,412 @@
+---
+title: IResourceBuilder<T>
+description: Builder interface for configuring resources with a fluent API
+---
+
+The `IResourceBuilder<T>` interface provides a fluent API for configuring resources in .NET Aspire applications. Every resource added to an application returns a builder that enables method chaining for configuration.
+
+## Interface Definition
+
+```csharp
+public interface IResourceBuilder<out T> where T : IResource
+{
+    IDistributedApplicationBuilder ApplicationBuilder { get; }
+    T Resource { get; }
+    IResourceBuilder<T> WithAnnotation<TAnnotation>(TAnnotation annotation, 
+        ResourceAnnotationMutationBehavior behavior = ResourceAnnotationMutationBehavior.Append) 
+        where TAnnotation : IResourceAnnotation;
+}
+```
+
+### Properties
+
+<ResponseField name="ApplicationBuilder" type="IDistributedApplicationBuilder">
+  Gets the distributed application builder that owns this resource builder. Use this to access application-level configuration or add related resources.
+</ResponseField>
+
+<ResponseField name="Resource" type="T">
+  Gets the resource being built. Access this to read or modify resource properties directly.
+</ResponseField>
+
+## Core Methods
+
+### WithAnnotation
+
+Adds metadata and configuration to resources through annotations.
+
+<ParamField path="WithAnnotation<TAnnotation>(annotation, behavior)" type="IResourceBuilder<T>">
+  Adds an annotation to the resource being built.
+  
+  **Parameters:**
+  - `annotation` - The annotation instance to add
+  - `behavior` - Controls how the annotation is added:
+    - `Append` (default) - Add the annotation to existing annotations
+    - `Replace` - Replace any existing annotation of the same type
+  
+  **Returns:** The resource builder for method chaining
+</ParamField>
+
+```csharp Using Annotations
+var builder = DistributedApplication.CreateBuilder(args);
+
+builder.AddContainer("mycontainer", "myimage")
+       .WithAnnotation(new CustomAnnotation { Value = "example" })
+       .WithAnnotation(new AnotherAnnotation(), ResourceAnnotationMutationBehavior.Replace);
+```
+
+## Common Configuration Methods
+
+These extension methods are available on `IResourceBuilder<T>` for different resource types:
+
+### Environment Variables
+
+Available for resources implementing `IResourceWithEnvironment`.
+
+<CodeGroup>
+```csharp Static Values
+builder.AddContainer("api", "myapi")
+       .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Production")
+       .WithEnvironment("LOG_LEVEL", "Information");
+```
+
+```csharp From Parameters
+var apiKey = builder.AddParameter("api-key", secret: true);
+
+builder.AddContainer("api", "myapi")
+       .WithEnvironment("API_KEY", apiKey);
+```
+
+```csharp From Endpoints
+var redis = builder.AddRedis("cache");
+var endpoint = redis.GetEndpoint("tcp");
+
+builder.AddProject<Projects.Api>("api")
+       .WithEnvironment("REDIS_ENDPOINT", endpoint);
+```
+
+```csharp With Callbacks
+builder.AddContainer("api", "myapi")
+       .WithEnvironment(context => 
+       {
+           context.EnvironmentVariables["COMPUTED_VALUE"] = 
+               $"prefix-{DateTime.UtcNow.Ticks}";
+       });
+```
+</CodeGroup>
+
+<ParamField path="WithEnvironment(name, value)" type="IResourceBuilder<T>">
+  Adds a static environment variable.
+  
+  **Parameters:**
+  - `name` - Variable name
+  - `value` - Variable value (string, parameter, endpoint reference, or expression)
+</ParamField>
+
+<ParamField path="WithEnvironment(callback)" type="IResourceBuilder<T>">
+  Adds environment variables through a callback for computed or dynamic values.
+  
+  **Parameters:**
+  - `callback` - Action or async function receiving `EnvironmentCallbackContext`
+</ParamField>
+
+### Command-Line Arguments
+
+Available for resources implementing `IResourceWithArgs`.
+
+<CodeGroup>
+```csharp Static Arguments
+builder.AddExecutable("tool", "dotnet", workingDirectory: "/app")
+       .WithArgs("run", "--configuration", "Release");
+```
+
+```csharp Dynamic Arguments
+var dbPassword = builder.AddParameter("db-password", secret: true);
+
+builder.AddExecutable("migration", "dotnet")
+       .WithArgs(context => 
+       {
+           context.Args.Add("ef");
+           context.Args.Add("database");
+           context.Args.Add("update");
+           context.Args.Add($"--password={dbPassword}");
+       });
+```
+</CodeGroup>
+
+<ParamField path="WithArgs(params string[])" type="IResourceBuilder<T>">
+  Adds static command-line arguments.
+  
+  **Parameters:**
+  - `args` - Array of argument strings
+</ParamField>
+
+<ParamField path="WithArgs(callback)" type="IResourceBuilder<T>">
+  Adds arguments through a callback for computed values.
+  
+  **Parameters:**
+  - `callback` - Action or async function receiving `CommandLineArgsCallbackContext`
+</ParamField>
+
+### Endpoints
+
+Available for resources implementing `IResourceWithEndpoints`.
+
+<CodeGroup>
+```csharp HTTP Endpoint
+builder.AddProject<Projects.Api>("api")
+       .WithHttpEndpoint(port: 8080, name: "http");
+```
+
+```csharp HTTPS Endpoint
+builder.AddProject<Projects.Api>("api")
+       .WithHttpsEndpoint(port: 8443, name: "https");
+```
+
+```csharp Custom Endpoint
+builder.AddContainer("redis", "redis")
+       .WithEndpoint(targetPort: 6379, port: 6380, 
+                    scheme: "tcp", name: "redis");
+```
+
+```csharp Modify Existing
+builder.AddProject<Projects.Api>("api")
+       .WithHttpEndpoint()
+       .WithEndpoint("http", endpoint => 
+       {
+           endpoint.Port = 9000;
+           endpoint.IsExternal = true;
+       });
+```
+</CodeGroup>
+
+<ParamField path="WithHttpEndpoint(port, name)" type="IResourceBuilder<T>">
+  Adds an HTTP endpoint.
+  
+  **Parameters:**
+  - `port` - Optional external port number
+  - `name` - Optional endpoint name (defaults to "http")
+</ParamField>
+
+<ParamField path="WithHttpsEndpoint(port, name)" type="IResourceBuilder<T>">
+  Adds an HTTPS endpoint.
+  
+  **Parameters:**
+  - `port` - Optional external port number
+  - `name` - Optional endpoint name (defaults to "https")
+</ParamField>
+
+<ParamField path="WithEndpoint(targetPort, port, scheme, name)" type="IResourceBuilder<T>">
+  Adds a custom endpoint with full control over configuration.
+  
+  **Parameters:**
+  - `targetPort` - Port the resource listens on
+  - `port` - Optional external port
+  - `scheme` - URI scheme (http, https, tcp, etc.)
+  - `name` - Optional endpoint name
+</ParamField>
+
+<ParamField path="WithEndpoint(name, callback, createIfNotExists)" type="IResourceBuilder<T>">
+  Modifies an existing endpoint or creates a new one.
+  
+  **Parameters:**
+  - `name` - Endpoint name
+  - `callback` - Action to modify the `EndpointAnnotation`
+  - `createIfNotExists` - Create the endpoint if it doesn't exist
+</ParamField>
+
+### Getting Endpoint References
+
+<ParamField path="GetEndpoint(name)" type="EndpointReference">
+  Gets a reference to an endpoint that can be used in references or environment variables.
+  
+  **Parameters:**
+  - `name` - Endpoint name
+  
+  **Returns:** An `EndpointReference` that resolves to the endpoint URL at runtime
+</ParamField>
+
+```csharp Endpoint References
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithHttpsEndpoint();
+
+var frontend = builder.AddNpmApp("frontend", "../frontend")
+                      .WithEnvironment("API_URL", api.GetEndpoint("https"));
+```
+
+### Resource References
+
+Create dependencies between resources using `WithReference`.
+
+<CodeGroup>
+```csharp Connection String Reference
+var postgres = builder.AddPostgres("postgres");
+var db = postgres.AddDatabase("mydb");
+
+builder.AddProject<Projects.Api>("api")
+       .WithReference(db);  // Injects ConnectionStrings__mydb
+```
+
+```csharp Service Discovery Reference
+var cache = builder.AddRedis("cache");
+
+builder.AddProject<Projects.Api>("api")
+       .WithReference(cache);  // Injects service discovery variables
+```
+
+```csharp Endpoint Reference
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithHttpsEndpoint();
+
+builder.AddProject<Projects.Frontend>("frontend")
+       .WithReference(api.GetEndpoint("https"));
+```
+
+```csharp Named Reference
+var db = builder.AddPostgres("postgres").AddDatabase("mydb");
+
+builder.AddProject<Projects.Api>("api")
+       .WithReference(db, connectionName: "MainDatabase");
+       // Injects ConnectionStrings__MainDatabase
+```
+</CodeGroup>
+
+<ParamField path="WithReference(source)" type="IResourceBuilder<TDestination>">
+  Adds a reference to another resource, injecting connection strings and/or service discovery information.
+  
+  **Parameters:**
+  - `source` - The resource builder to reference
+  - `connectionName` - Optional custom name for connection string (only for `IResourceWithConnectionString`)
+  - `optional` - Whether the connection string is optional
+</ParamField>
+
+## Container-Specific Methods
+
+For resources that are `ContainerResource`:
+
+### Image Configuration
+
+<CodeGroup>
+```csharp Basic Image
+builder.AddContainer("redis", "redis");
+```
+
+```csharp With Tag
+builder.AddContainer("postgres", "postgres", "16");
+// Or
+builder.AddContainer("postgres", "postgres")
+       .WithImageTag("16-alpine");
+```
+
+```csharp With Registry
+builder.AddContainer("myapp", "myapp")
+       .WithImageRegistry("myregistry.azurecr.io");
+```
+
+```csharp With SHA256
+builder.AddContainer("nginx", "nginx")
+       .WithImageSHA256("a1b2c3d4...");
+```
+</CodeGroup>
+
+### Volumes and Bind Mounts
+
+<CodeGroup>
+```csharp Named Volume
+builder.AddContainer("postgres", "postgres")
+       .WithVolume("postgres-data", "/var/lib/postgresql/data");
+```
+
+```csharp Anonymous Volume
+builder.AddContainer("redis", "redis")
+       .WithVolume("/data");
+```
+
+```csharp Bind Mount
+builder.AddContainer("nginx", "nginx")
+       .WithBindMount("./html", "/usr/share/nginx/html", isReadOnly: true);
+```
+</CodeGroup>
+
+<ParamField path="WithVolume(name, target, isReadOnly)" type="IResourceBuilder<T>">
+  Adds a Docker volume to the container.
+  
+  **Parameters:**
+  - `name` - Optional volume name (null creates anonymous volume)
+  - `target` - Mount path in container
+  - `isReadOnly` - Whether the volume is read-only
+</ParamField>
+
+<ParamField path="WithBindMount(source, target, isReadOnly)" type="IResourceBuilder<T>">
+  Mounts a host directory or file into the container.
+  
+  **Parameters:**
+  - `source` - Host path (relative to app host directory unless absolute)
+  - `target` - Mount path in container
+  - `isReadOnly` - Whether the mount is read-only
+</ParamField>
+
+### Container Runtime
+
+<CodeGroup>
+```csharp Entrypoint
+builder.AddContainer("myapp", "myapp")
+       .WithEntrypoint("/app/startup.sh");
+```
+
+```csharp Lifetime
+builder.AddContainer("postgres", "postgres")
+       .WithLifetime(ContainerLifetime.Persistent);
+```
+
+```csharp Pull Policy
+builder.AddContainer("myapp", "myapp")
+       .WithImagePullPolicy(ImagePullPolicy.Always);
+```
+
+```csharp Runtime Args
+builder.AddContainer("gpu-app", "gpu-app")
+       .WithContainerRuntimeArgs("--gpus", "all");
+```
+</CodeGroup>
+
+## Publishing Configuration
+
+<ParamField path="WithManifestPublishingCallback(callback)" type="IResourceBuilder<T>">
+  Customizes how the resource is written to the deployment manifest.
+  
+  **Parameters:**
+  - `callback` - Action or async function receiving `ManifestPublishingContext`
+</ParamField>
+
+```csharp Custom Manifest Output
+builder.AddContainer("myapp", "myapp")
+       .WithManifestPublishingCallback(context => 
+       {
+           context.Writer.WriteString("customProperty", "value");
+       });
+```
+
+## Method Chaining Pattern
+
+All builder methods return `IResourceBuilder<T>`, enabling fluent configuration:
+
+```csharp Complete Example
+var builder = DistributedApplication.CreateBuilder(args);
+
+var apiKey = builder.AddParameter("api-key", secret: true);
+var cache = builder.AddRedis("cache");
+
+builder.AddProject<Projects.Api>("api")
+       .WithHttpsEndpoint(port: 8443)
+       .WithEnvironment("API_KEY", apiKey)
+       .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Production")
+       .WithReference(cache)
+       .WithReplicas(3);
+```
+
+## Related APIs
+
+- [DistributedApplication](/api/distributed-application) - Creating and running applications
+- [IResource](/api/resource-interfaces) - Resource interfaces and contracts
+- [ContainerResource](/api/container-resource) - Container resource specifics
+- [ProjectResource](/api/project-resource) - .NET project resources

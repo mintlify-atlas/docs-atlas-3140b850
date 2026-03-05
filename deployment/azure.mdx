@@ -1,0 +1,351 @@
+---
+title: Deploying to Azure
+description: Deploy .NET Aspire applications to Azure Container Apps with integrated Azure services and managed infrastructure
+---
+
+.NET Aspire provides first-class support for deploying to Azure Container Apps, a fully managed serverless container platform that handles infrastructure, scaling, and monitoring.
+
+## Prerequisites
+
+- Azure subscription
+- Azure CLI installed and authenticated
+- .NET Aspire application with AppHost project
+- Aspire CLI installed (`dotnet tool install -g aspire`)
+
+## Azure Container Apps Deployment
+
+Azure Container Apps is the recommended deployment target for Aspire applications, offering:
+
+- Automatic scaling based on HTTP traffic, events, or CPU/memory
+- Built-in ingress and load balancing
+- Managed identity and Azure service integration
+- Container registry integration
+- Observability with Azure Monitor
+
+### Setting Up Container App Environment
+
+Add an Azure Container Apps environment to your AppHost:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+// Add Container Apps environment
+var containerAppEnv = builder.AddAzureContainerAppEnvironment("myenv");
+
+// Add your services
+var cache = builder.AddRedis("cache");
+var apiService = builder.AddProject<Projects.ApiService>("apiservice")
+    .WithReference(cache);
+
+builder.Build().Run();
+```
+
+The environment automatically provisions:
+- **Container App Environment**: The managed environment for your containers
+- **Container Registry**: Azure Container Registry for storing images
+- **Log Analytics Workspace**: For logs and metrics
+- **Managed Identity**: For secure Azure resource access
+
+### Customizing the Environment
+
+#### Using Azure Naming Conventions
+
+Configure resources to use azd-compatible naming:
+
+```csharp
+var containerAppEnv = builder.AddAzureContainerAppEnvironment("myenv")
+    .WithAzdResourceNaming();
+```
+
+This generates resource names like:
+- `cae-{uniqueString}` - Container App Environment
+- `acr-{uniqueString}` - Container Registry
+- `law-{uniqueString}` - Log Analytics Workspace
+- `mi-{uniqueString}` - Managed Identity
+
+#### Compact Resource Naming
+
+For length-constrained resources (like storage accounts), use compact naming:
+
+```csharp
+var containerAppEnv = builder.AddAzureContainerAppEnvironment("myenv")
+    .WithCompactResourceNaming();
+```
+
+<Warning>
+This is an experimental feature marked with `ASPIREACANAMING001`. Use with caution in production.
+</Warning>
+
+#### Configuring the Aspire Dashboard
+
+Control whether the Aspire Dashboard is deployed:
+
+```csharp
+var containerAppEnv = builder.AddAzureContainerAppEnvironment("myenv")
+    .WithDashboard(enable: true); // Default is true
+```
+
+#### Using Custom Log Analytics Workspace
+
+Reference an existing Log Analytics workspace:
+
+```csharp
+var logAnalytics = builder.AddAzureLogAnalyticsWorkspace("myworkspace");
+
+var containerAppEnv = builder.AddAzureContainerAppEnvironment("myenv")
+    .WithAzureLogAnalyticsWorkspace(logAnalytics);
+```
+
+#### HTTPS Endpoint Upgrade
+
+By default, HTTP endpoints are upgraded to HTTPS for security:
+
+```csharp
+// Disable HTTPS upgrade (not recommended)
+var containerAppEnv = builder.AddAzureContainerAppEnvironment("myenv")
+    .WithHttpsUpgrade(upgrade: false);
+```
+
+### Deploying the Application
+
+Deploy your application using the Aspire CLI:
+
+```bash
+# Generate deployment artifacts
+aspire deploy --output-path ./deployment
+
+# The command generates:
+# - aspire-manifest.json
+# - Bicep files for Azure resources
+```
+
+The deployment process:
+
+1. **Builds container images** for all project resources
+2. **Pushes images** to the provisioned Azure Container Registry
+3. **Generates Bicep/ARM templates** for infrastructure
+4. **Deploys resources** to Azure
+
+### Understanding Deployment Targets
+
+When you add an Azure Container Apps environment, Aspire automatically annotates compute resources with deployment target information:
+
+```csharp
+// Internally, this is added to each compute resource:
+// src/Aspire.Hosting.Azure.AppContainers/AzureContainerAppsInfrastructure.cs:60
+r.Annotations.Add(new DeploymentTargetAnnotation(containerApp)
+{
+    ContainerRegistry = environment,
+    ComputeEnvironment = environment
+});
+```
+
+This annotation tells the deployment pipeline:
+- Which container registry to push images to
+- Which Container App Environment to deploy to
+- How to configure the container app
+
+## Manifest Generation for Azure
+
+When deploying to Azure Container Apps, the manifest includes deployment metadata:
+
+```json
+{
+  "apiservice": {
+    "type": "project.v1",
+    "path": "../ApiService/ApiService.csproj",
+    "deployment": {
+      "container": {
+        "image": "{apiservice.image}",
+        "registry": "{myenv.outputs.AZURE_CONTAINER_REGISTRY_ENDPOINT}"
+      },
+      "environment": {
+        "id": "{myenv.outputs.AZURE_CONTAINER_APPS_ENVIRONMENT_ID}"
+      }
+    },
+    "env": { },
+    "bindings": { }
+  }
+}
+```
+
+## Azure Resource Integration
+
+Aspire provides seamless integration with Azure services:
+
+### Azure Storage
+
+```csharp
+var storage = builder.AddAzureStorage("storage");
+var blobs = storage.AddBlobs("blobs");
+var queues = storage.AddQueues("queues");
+var tables = storage.AddTables("tables");
+
+builder.AddProject<Projects.ApiService>("api")
+    .WithReference(blobs);
+```
+
+### Azure Cosmos DB
+
+```csharp
+var cosmos = builder.AddAzureCosmosDB("cosmos")
+    .AddDatabase("mydb");
+
+builder.AddProject<Projects.DataService>("dataservice")
+    .WithReference(cosmos);
+```
+
+### Azure Service Bus
+
+```csharp
+var serviceBus = builder.AddAzureServiceBus("messaging")
+    .AddQueue("orders")
+    .AddTopic("events");
+
+builder.AddProject<Projects.MessageProcessor>("processor")
+    .WithReference(serviceBus);
+```
+
+### Azure SQL Database
+
+```csharp
+var sql = builder.AddAzureSqlServer("sql")
+    .AddDatabase("catalogdb");
+
+builder.AddProject<Projects.CatalogService>("catalog")
+    .WithReference(sql);
+```
+
+## Infrastructure as Code
+
+Aspire uses Azure Bicep for infrastructure provisioning. The infrastructure code is generated from your app model.
+
+### Custom Infrastructure
+
+Customize the generated infrastructure:
+
+```csharp
+var containerAppEnv = builder.AddAzureContainerAppEnvironment("myenv")
+    .ConfigureInfrastructure(infra =>
+    {
+        // Access the AzureResourceInfrastructure to customize
+        // Add custom Bicep resources, modify existing ones, etc.
+    });
+```
+
+### Azure Provisioning Options
+
+Configure global Azure provisioning settings:
+
+```csharp
+builder.Services.Configure<AzureProvisioningOptions>(options =>
+{
+    // Configure whether resources support targeted role assignments
+    options.SupportsTargetedRoleAssignments = true;
+});
+```
+
+## Deployment Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Managed Identities">
+    Avoid storing credentials by using Azure Managed Identity:
+
+    ```csharp
+    var storage = builder.AddAzureStorage("storage")
+        .RunAsEmulator() // Local development
+        .AddBlobs("blobs");
+    ```
+
+    In production, managed identity is used automatically.
+  </Accordion>
+
+  <Accordion title="Separate Environments">
+    Use different environments for dev, staging, and production:
+
+    ```bash
+    aspire deploy --environment Staging --output-path ./staging
+    aspire deploy --environment Production --output-path ./prod
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor Deployments">
+    Use Azure Monitor and Application Insights:
+
+    ```csharp
+    var appInsights = builder.AddAzureApplicationInsights("insights");
+    
+    builder.AddProject<Projects.ApiService>("api")
+        .WithReference(appInsights);
+    ```
+  </Accordion>
+
+  <Accordion title="Configure Scaling">
+    Container Apps automatically scale, but you can customize:
+
+    ```csharp
+    builder.AddProject<Projects.ApiService>("api")
+        .PublishAsAzureContainerApp((module, app) =>
+        {
+            // Customize container app settings
+            // Note: This is an advanced scenario
+        });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Common Issues
+
+<Tabs>
+  <Tab title="Missing Container Registry">
+    **Error**: No container registry associated with environment
+
+    **Solution**: Ensure the Container Apps environment is properly configured:
+
+    ```csharp
+    var containerAppEnv = builder.AddAzureContainerAppEnvironment("myenv");
+    ```
+
+    The registry is created automatically.
+  </Tab>
+
+  <Tab title="Authentication Failures">
+    **Error**: Unable to authenticate to Azure
+
+    **Solution**: Login with Azure CLI:
+
+    ```bash
+    az login
+    az account set --subscription <subscription-id>
+    ```
+  </Tab>
+
+  <Tab title="Resource Name Conflicts">
+    **Error**: Resource names already exist
+
+    **Solution**: Use unique naming or clear deployment cache:
+
+    ```bash
+    aspire deploy --clear-cache --output-path ./deployment
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Azure Hosting Integrations" icon="cloud" href="/hosting/azure-overview">
+    Explore all available Azure service integrations
+  </Card>
+  <Card title="Kubernetes Deployment" icon="dharmachakra" href="/deployment/kubernetes">
+    Learn about deploying to Kubernetes clusters
+  </Card>
+  <Card title="CLI Deploy Command" icon="terminal" href="/cli/deploy">
+    Full reference for the aspire deploy command
+  </Card>
+  <Card title="App Model" icon="diagram-project" href="/concepts/app-model">
+    Understand the Aspire application model
+  </Card>
+</CardGroup>

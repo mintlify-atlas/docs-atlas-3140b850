@@ -1,0 +1,206 @@
+---
+title: Deployment Overview
+description: Learn about deploying .NET Aspire applications to production environments using manifest generation and deployment pipelines
+---
+
+.NET Aspire applications can be deployed to various cloud platforms and container orchestration environments. The framework provides a flexible deployment model based on manifest generation that enables deployment to Azure Container Apps, Kubernetes, and other container platforms.
+
+## Deployment Model
+
+Aspire uses a pipeline-based deployment model where your application model is transformed into deployment artifacts:
+
+1. **Development**: Define your application using the Aspire app model in your AppHost project
+2. **Manifest Generation**: Generate a deployment manifest describing all resources and their configuration
+3. **Deployment**: Deploy to your target environment using platform-specific tools
+
+## Manifest Generation
+
+The manifest is a JSON file that describes your entire application topology, including:
+
+- Container images and their configurations
+- .NET projects and their build settings
+- Environment variables and configuration
+- Service endpoints and bindings
+- Dependencies between resources
+
+### Generating a Manifest
+
+Use the `aspire` CLI to generate a deployment manifest:
+
+```bash
+aspire deploy --output-path ./deployment-artifacts
+```
+
+This creates an `aspire-manifest.json` file in the output directory:
+
+```json
+{
+  "$schema": "https://json.schemastore.org/aspire-8.0.json",
+  "resources": {
+    "apiservice": {
+      "type": "project.v0",
+      "path": "../ApiService/ApiService.csproj",
+      "env": {
+        "OTEL_DOTNET_EXPERIMENTAL_OTLP_EMIT_EXCEPTION_LOG_ATTRIBUTES": "true",
+        "OTEL_DOTNET_EXPERIMENTAL_OTLP_EMIT_EVENT_LOG_ATTRIBUTES": "true"
+      },
+      "bindings": {
+        "http": {
+          "scheme": "http",
+          "protocol": "tcp",
+          "transport": "http"
+        },
+        "https": {
+          "scheme": "https",
+          "protocol": "tcp",
+          "transport": "http"
+        }
+      }
+    }
+  }
+}
+```
+
+### Manifest Resource Types
+
+The manifest supports several resource types:
+
+<AccordionGroup>
+  <Accordion title="project.v0 - .NET Projects">
+    Represents a .NET project that will be built and containerized.
+
+    ```json
+    {
+      "type": "project.v0",
+      "path": "../ApiService/ApiService.csproj",
+      "env": { },
+      "bindings": { }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="container.v0 - Container Images">
+    Represents a pre-built container image.
+
+    ```json
+    {
+      "type": "container.v0",
+      "image": "mcr.microsoft.com/dotnet/sdk:9.0",
+      "env": { },
+      "bindings": { }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="container.v1 - Container with Dockerfile">
+    Represents a container built from a Dockerfile.
+
+    ```json
+    {
+      "type": "container.v1",
+      "build": {
+        "context": "../frontend",
+        "dockerfile": "../frontend/Dockerfile"
+      },
+      "env": { },
+      "bindings": { }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="value.v0 - Connection Strings">
+    Represents a connection string or other configuration value.
+
+    ```json
+    {
+      "type": "value.v0",
+      "connectionString": "{postgres.connectionString}"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="parameter.v0 - Parameters">
+    Represents a deployable parameter with optional secrets.
+
+    ```json
+    {
+      "type": "parameter.v0",
+      "value": "{password.inputs.value}",
+      "inputs": {
+        "value": {
+          "type": "string",
+          "secret": true
+        }
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Deployment Targets
+
+.NET Aspire supports deployment to multiple platforms:
+
+<CardGroup cols={2}>
+  <Card title="Azure Container Apps" icon="microsoft" href="/deployment/azure">
+    Deploy to Azure's serverless container platform with automatic scaling and managed infrastructure
+  </Card>
+  <Card title="Kubernetes" icon="dharmachakra" href="/deployment/kubernetes">
+    Deploy to any Kubernetes cluster using Helm charts or kubectl
+  </Card>
+</CardGroup>
+
+## Deployment Pipeline
+
+The deployment process uses a pipeline architecture located in `src/Aspire.Hosting/Publishing/`:
+
+### Pipeline Steps
+
+1. **Manifest Publishing** - Generates the deployment manifest
+2. **Deployment Step** - Executes platform-specific deployment logic
+
+You can customize the deployment process by implementing custom pipeline steps.
+
+### Using the Deploy Command
+
+The `aspire deploy` command orchestrates the deployment:
+
+```bash
+# Deploy to default environment
+aspire deploy --output-path ./artifacts
+
+# Deploy with specific environment
+aspire deploy --environment Production --output-path ./artifacts
+
+# Clear deployment cache
+aspire deploy --clear-cache --output-path ./artifacts
+```
+
+<Note>
+The deploy command is located in `src/Aspire.Cli/Commands/DeployCommand.cs` and executes the publish pipeline with the `--step deploy` flag.
+</Note>
+
+## Deployment State Management
+
+Aspire tracks deployment state to enable incremental deployments and rollbacks:
+
+- State is stored per environment (Development, Staging, Production)
+- Use `--clear-cache` to reset deployment state
+- State managers are implemented in `src/Aspire.Hosting/Pipelines/Internal/`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Deploy to Azure" icon="cloud-arrow-up" href="/deployment/azure">
+    Learn how to deploy to Azure Container Apps and configure Azure resources
+  </Card>
+  <Card title="Deploy to Kubernetes" icon="ship" href="/deployment/kubernetes">
+    Learn how to deploy to Kubernetes clusters using Helm
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- [App Model Specification](https://github.com/dotnet/aspire/blob/main/docs/specs/appmodel.md)
+- [Aspire CLI Reference](/cli/deploy)
+- [Azure Provisioning](/hosting/azure-overview)

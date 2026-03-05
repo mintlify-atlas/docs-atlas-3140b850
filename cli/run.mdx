@@ -1,0 +1,320 @@
+---
+title: aspire run
+description: Run an Aspire AppHost interactively for local development with the Aspire Dashboard.
+---
+
+# aspire run
+
+Run an Aspire AppHost interactively for development.
+
+## Usage
+
+```bash
+aspire run [options]
+```
+
+## Description
+
+The `aspire run` command builds and runs your Aspire AppHost, starting all configured resources and launching the Aspire Dashboard for monitoring and debugging.
+
+### What Happens When You Run
+
+1. **Builds the AppHost** - Compiles your AppHost project and its dependencies
+2. **Trusts certificates** - Ensures HTTPS development certificates are trusted
+3. **Starts resources** - Launches all services, containers, and infrastructure defined in your AppHost
+4. **Opens the Dashboard** - Provides a web-based UI for monitoring resources, logs, and traces
+5. **Establishes backchannel** - Creates a communication channel between the CLI and AppHost for status updates
+
+The command runs in the foreground by default, keeping your AppHost running until you press `Ctrl+C`.
+
+## Options
+
+<ParamField path="--apphost" type="string">
+  The path to the Aspire AppHost project file
+  
+  Example: `--apphost ./src/MyApp.AppHost/MyApp.AppHost.csproj`
+  
+  If not specified, the CLI searches for an AppHost project in the current directory and parent directories.
+</ParamField>
+
+<ParamField path="--detach" type="boolean">
+  Run the AppHost in the background and exit after it starts
+  
+  Example: `aspire run --detach`
+  
+  In detached mode, the CLI:
+  - Spawns the AppHost as a background process
+  - Waits for the Dashboard to become available
+  - Displays connection info (AppHost path, Dashboard URL, PID, logs)
+  - Exits, leaving the AppHost running
+  
+  Use `aspire stop` to stop detached instances.
+</ParamField>
+
+<ParamField path="--no-build" type="boolean">
+  Do not build or restore the project before running
+  
+  Example: `aspire run --no-build`
+  
+  Useful when you've already built the project and want to skip the build step. Cannot be used with watch mode.
+</ParamField>
+
+<ParamField path="--format" type="string">
+  Output format for detached AppHost results: `json` or `text`
+  
+  Example: `aspire run --detach --format json`
+  
+  Only valid with `--detach`. JSON output includes:
+  ```json
+  {
+    "appHostPath": "/path/to/MyApp.AppHost.csproj",
+    "appHostPid": 12345,
+    "cliPid": 12344,
+    "dashboardUrl": "https://localhost:15888",
+    "logFile": "/path/to/.aspire/logs/aspire.log"
+  }
+  ```
+</ParamField>
+
+<ParamField path="--isolated" type="boolean">
+  Run in isolated mode with randomized ports and isolated user secrets
+  
+  Example: `aspire run --isolated`
+  
+  Isolated mode:
+  - Randomizes all endpoint ports to avoid conflicts
+  - Copies user secrets to a temporary isolated location
+  - Allows multiple instances of the same AppHost to run simultaneously
+  - Ideal for running multiple branches or testing different configurations
+</ParamField>
+
+## Examples
+
+### Run in the current directory
+
+```bash
+aspire run
+```
+
+Output:
+```
+✓ Building AppHost...
+✓ Connecting to apphost...
+✓ Starting dashboard...
+
+   AppHost:    MyApp.AppHost/MyApp.AppHost.csproj
+   Dashboard:  https://localhost:15888
+   Logs:       /home/user/.aspire/logs/aspire.log
+
+   Press CTRL+C to stop the apphost and exit.
+```
+
+### Run with a specific AppHost
+
+```bash
+aspire run --apphost ./src/MyApp.AppHost/MyApp.AppHost.csproj
+```
+
+### Run in detached mode
+
+```bash
+aspire run --detach
+```
+
+Output:
+```
+✓ Starting Aspire apphost in the background...
+✓ Waiting for apphost to start...
+✓ AppHost started successfully.
+
+   AppHost:    MyApp.AppHost/MyApp.AppHost.csproj
+   Dashboard:  https://localhost:15888
+   Logs:       /home/user/.aspire/logs/aspire.log
+   PID:        12345
+```
+
+The CLI exits, but the AppHost continues running. Use `aspire stop` to stop it.
+
+### Run in detached mode with JSON output
+
+```bash
+aspire run --detach --format json
+```
+
+Output:
+```json
+{
+  "appHostPath": "/home/user/MyApp/MyApp.AppHost/MyApp.AppHost.csproj",
+  "appHostPid": 12345,
+  "cliPid": 12344,
+  "dashboardUrl": "https://localhost:15888?t=abc123",
+  "logFile": "/home/user/.aspire/logs/aspire.log"
+}
+```
+
+### Run in isolated mode
+
+```bash
+aspire run --isolated
+```
+
+This allows you to run multiple instances:
+
+```bash
+cd ~/projects/main-branch
+aspire run --isolated --detach
+
+cd ~/projects/feature-branch
+aspire run --isolated --detach
+```
+
+Each instance gets unique ports and isolated secrets.
+
+### Skip the build
+
+```bash
+dotnet build
+aspire run --no-build
+```
+
+## Dashboard Features
+
+The Aspire Dashboard provides:
+
+### Resources View
+- See all services, containers, and infrastructure
+- Monitor health status and state (Starting, Running, Stopped)
+- View endpoint URLs for each resource
+- Inspect environment variables and configuration
+
+### Structured Logs
+- View logs from all resources in real-time
+- Filter by resource, log level, or search text
+- Export logs for analysis
+
+### Distributed Tracing
+- View traces across service boundaries
+- Inspect trace details and timing
+- Identify performance bottlenecks
+
+### Metrics
+- Monitor CPU, memory, and request metrics
+- View custom metrics from your services
+- Visualize trends over time
+
+## Stopping the AppHost
+
+### Foreground Mode
+
+Press `Ctrl+C` in the terminal where `aspire run` is running:
+
+```bash
+^C
+✓ Operation canceled.
+```
+
+### Detached Mode
+
+Use the `aspire stop` command:
+
+```bash
+aspire stop
+```
+
+Or stop by PID:
+
+```bash
+kill 12345
+```
+
+## Running Instance Detection
+
+When you run `aspire run`, the CLI automatically:
+- Detects any running instances of the same AppHost
+- Stops the existing instance before starting a new one
+- Prevents port conflicts and resource contention
+
+This ensures you always have a single, up-to-date instance running.
+
+## Logs
+
+All AppHost logs are written to a unified log file:
+
+```
+~/.aspire/logs/aspire.log  (Linux/macOS)
+%USERPROFILE%\.aspire\logs\aspire.log  (Windows)
+```
+
+View logs:
+
+```bash
+tail -f ~/.aspire/logs/aspire.log
+```
+
+Or use the Dashboard's Logs view for a richer experience.
+
+## Debugging
+
+To debug your AppHost:
+
+```bash
+aspire run --wait-for-debugger
+```
+
+This pauses AppHost startup until you attach a debugger, allowing you to debug AppHost configuration and startup logic.
+
+## Watch Mode
+
+By default, the Aspire CLI enables watch mode for project resources when running under the VS Code extension. In watch mode:
+
+- Changes to project files trigger automatic rebuilds
+- Updated services restart with the latest code
+- Provides a rapid inner-loop development experience
+
+Watch mode is currently only available when running through the VS Code extension.
+
+## Remote Environments
+
+In remote environments (GitHub Codespaces, VS Code Remote Containers, SSH), the Dashboard provides:
+
+- Forwarded URLs for accessing the Dashboard remotely
+- Automatic endpoint discovery and display
+- Real-time resource status updates
+
+## Troubleshooting
+
+### AppHost fails to start
+
+Check the logs:
+
+```bash
+cat ~/.aspire/logs/aspire.log
+```
+
+Common issues:
+- Port conflicts (solution: use `--isolated`)
+- Missing dependencies (solution: run `dotnet restore`)
+- Certificate issues (solution: run `dotnet dev-certs https --trust`)
+
+### Dashboard doesn't open
+
+The Dashboard URL is displayed in the terminal. Copy and paste it into your browser:
+
+```
+Dashboard:  https://localhost:15888?t=abc123
+```
+
+The `?t=` query parameter is a login token for security.
+
+### Multiple instances conflict
+
+Use isolated mode:
+
+```bash
+aspire run --isolated
+```
+
+## See Also
+
+- [CLI Overview](/cli/overview) - Complete CLI command reference
+- [aspire deploy](/cli/deploy) - Deploy your AppHost to production

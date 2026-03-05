@@ -1,0 +1,206 @@
+---
+title: "Client Integrations Overview"
+description: "Learn how to use .NET Aspire client integration components to connect your services to databases, messaging systems, and cloud services"
+icon: "puzzle-piece"
+---
+
+## What are client integrations?
+
+Client integrations (also called components) are NuGet packages that simplify connecting your .NET services to popular databases, messaging systems, and cloud services. Each component registers the appropriate client type in your dependency injection container and automatically configures health checks, logging, telemetry, and other observability features.
+
+## Key benefits
+
+Client integrations provide several advantages over manually configuring clients:
+
+- **Automatic registration**: Components register clients in the DI container with proper configuration
+- **Built-in observability**: Health checks, logging, metrics, and distributed tracing are configured automatically
+- **Consistent patterns**: All components follow the same configuration conventions
+- **Connection string support**: Works seamlessly with the Aspire app model and hosting integrations
+- **Production-ready**: Includes retry policies, timeouts, and other resilience features
+
+## How components work
+
+Client integrations follow a consistent pattern:
+
+1. **Install the package**: Add the component NuGet package to your service project
+2. **Register the client**: Call the component's extension method in your `Program.cs` file
+3. **Inject and use**: Access the client through dependency injection in your services
+
+### Basic example
+
+```csharp
+// In your service's Program.cs
+builder.AddNpgsqlDataSource("postgresdb");
+
+// In your service class
+public class ProductsService
+{
+    private readonly NpgsqlDataSource _dataSource;
+
+    public ProductsService(NpgsqlDataSource dataSource)
+    {
+        _dataSource = dataSource;
+    }
+
+    public async Task<List<Product>> GetProducts()
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync();
+        // Use the connection...
+    }
+}
+```
+
+## Available components
+
+### Databases
+
+<CardGroup cols={2}>
+
+<Card title="PostgreSQL (Npgsql)" icon="database" href="/components/npgsql">
+  Connect to PostgreSQL databases using the Npgsql driver
+</Card>
+
+<Card title="SQL Server" icon="database" href="/components/sql-client">
+  Connect to Azure SQL and SQL Server databases
+</Card>
+
+<Card title="Redis" icon="database" href="/components/stackexchange-redis">
+  Connect to Redis for caching and data storage
+</Card>
+
+<Card title="MongoDB" icon="database" href="/components/mongodb">
+  Connect to MongoDB databases with the .NET driver
+</Card>
+
+</CardGroup>
+
+### Messaging
+
+<CardGroup cols={2}>
+
+<Card title="RabbitMQ" icon="message" href="/components/rabbitmq">
+  Connect to RabbitMQ message brokers
+</Card>
+
+<Card title="Apache Kafka" icon="message" href="/components/kafka">
+  Produce and consume messages with Apache Kafka
+</Card>
+
+</CardGroup>
+
+### Azure Services
+
+<CardGroup cols={2}>
+
+<Card title="Azure Cosmos DB" icon="cloud" href="/components/azure-cosmos">
+  Connect to Azure Cosmos DB for NoSQL
+</Card>
+
+<Card title="Azure Storage" icon="cloud" href="/components/azure-storage">
+  Work with Azure Blob Storage and Queue Storage
+</Card>
+
+<Card title="Azure Service Bus" icon="cloud" href="/components/azure-service-bus">
+  Send and receive messages with Azure Service Bus
+</Card>
+
+</CardGroup>
+
+## Configuration options
+
+All components support three configuration approaches:
+
+### Connection strings
+
+Use connection strings from the `ConnectionStrings` configuration section:
+
+```json
+{
+  "ConnectionStrings": {
+    "mydb": "Host=localhost;Database=mydb"
+  }
+}
+```
+
+### Configuration providers
+
+Configure component settings using `appsettings.json`:
+
+```json
+{
+  "Aspire": {
+    "Npgsql": {
+      "DisableHealthChecks": true,
+      "DisableTracing": false
+    }
+  }
+}
+```
+
+### Inline delegates
+
+Configure settings directly in code:
+
+```csharp
+builder.AddNpgsqlDataSource("mydb", settings => 
+{
+    settings.DisableHealthChecks = true;
+});
+```
+
+## Working with the app host
+
+Client integrations work seamlessly with hosting integrations. In your app host, register a resource and reference it in your service:
+
+```csharp
+// AppHost/Program.cs
+var postgres = builder.AddPostgres("pg").AddDatabase("mydb");
+
+var myService = builder.AddProject<Projects.MyService>()
+                       .WithReference(postgres);
+```
+
+The connection string is automatically passed to your service, where you consume it:
+
+```csharp
+// MyService/Program.cs
+builder.AddNpgsqlDataSource("mydb");
+```
+
+<Note>
+The connection name used in `WithReference` must match the name used in the component registration.
+</Note>
+
+## Common settings
+
+Most components support these common settings:
+
+| Setting | Description | Default |
+|---------|-------------|----------|
+| `DisableHealthChecks` | Disable automatic health check registration | `false` |
+| `DisableTracing` | Disable distributed tracing | `false` |
+| `DisableMetrics` | Disable metrics collection | `false` |
+
+Check each component's documentation for specific configuration options.
+
+## Next steps
+
+<CardGroup cols={2}>
+
+<Card title="PostgreSQL" icon="database" href="/components/npgsql">
+  Learn how to use the Npgsql component
+</Card>
+
+<Card title="SQL Server" icon="database" href="/components/sql-client">
+  Connect to SQL Server databases
+</Card>
+
+<Card title="Redis" icon="database" href="/components/stackexchange-redis">
+  Add caching with Redis
+</Card>
+
+<Card title="MongoDB" icon="database" href="/components/mongodb">
+  Work with MongoDB databases
+</Card>
+
+</CardGroup>

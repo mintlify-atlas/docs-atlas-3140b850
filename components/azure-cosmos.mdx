@@ -1,0 +1,542 @@
+---
+title: "Aspire.Microsoft.Azure.Cosmos"
+description: "Connect to Azure Cosmos DB for NoSQL with built-in logging and telemetry"
+icon: "cloud"
+---
+
+## Overview
+
+The `Aspire.Microsoft.Azure.Cosmos` component registers a [CosmosClient](https://learn.microsoft.com/dotnet/api/microsoft.azure.cosmos.cosmosclient) as a singleton in your dependency injection container for connecting to Azure Cosmos DB. It automatically enables logging and distributed tracing.
+
+## Installation
+
+Install the component using the .NET CLI:
+
+```bash
+dotnet add package Aspire.Microsoft.Azure.Cosmos
+```
+
+## Prerequisites
+
+- Azure subscription - [create one for free](https://azure.microsoft.com/free/)
+- Azure Cosmos DB account - [create a Cosmos DB account](https://learn.microsoft.com/azure/cosmos-db/nosql/how-to-create-account)
+
+## Usage
+
+### Register the component
+
+In your service's `Program.cs` file, call the `AddAzureCosmosClient` extension method:
+
+```csharp
+builder.AddAzureCosmosClient("cosmosdb");
+```
+
+### Inject and use the client
+
+Retrieve the `CosmosClient` instance using dependency injection:
+
+```csharp
+public class ProductsController : ControllerBase
+{
+    private readonly CosmosClient _cosmosClient;
+    private readonly Container _container;
+
+    public ProductsController(CosmosClient cosmosClient)
+    {
+        _cosmosClient = cosmosClient;
+        var database = cosmosClient.GetDatabase("catalog");
+        _container = database.GetContainer("products");
+    }
+
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetProduct(string id, string partitionKey)
+    {
+        try
+        {
+            var response = await _container.ReadItemAsync<Product>(
+                id, 
+                new PartitionKey(partitionKey));
+            
+            return Ok(response.Resource);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return NotFound();
+        }
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateProduct(Product product)
+    {
+        var response = await _container.CreateItemAsync(
+            product,
+            new PartitionKey(product.Category));
+        
+        return CreatedAtAction(
+            nameof(GetProduct), 
+            new { id = product.Id, partitionKey = product.Category }, 
+            response.Resource);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> QueryProducts(string category)
+    {
+        var query = new QueryDefinition(
+            "SELECT * FROM products p WHERE p.category = @category")
+            .WithParameter("@category", category);
+
+        var iterator = _container.GetItemQueryIterator<Product>(query);
+        var results = new List<Product>();
+
+        while (iterator.HasMoreResults)
+        {
+            var response = await iterator.ReadNextAsync();
+            results.AddRange(response);
+        }
+
+        return Ok(results);
+    }
+}
+```
+
+## Configuration
+
+The component provides multiple configuration options based on your project requirements.
+
+### Connection string
+
+You can configure the connection using either an account endpoint or a full connection string.
+
+#### Account endpoint (recommended)
+
+Provide an account endpoint in your `appsettings.json`:
+
+```json
+{
+  "ConnectionStrings": {
+    "cosmosdb": "https://myaccount.documents.azure.com:443/"
+  }
+}
+```
+
+This approach works with the `Credential` property to establish a connection. If no credential is configured, [DefaultAzureCredential](https://learn.microsoft.com/dotnet/api/azure.identity.defaultazurecredential) is used.
+
+#### Full connection string
+
+Alternatively, provide a complete connection string:
+
+```json
+{
+  "ConnectionStrings": {
+    "cosmosdb": "AccountEndpoint=https://myaccount.documents.azure.com:443/;AccountKey=myaccountkey;"
+  }
+}
+```
+
+For more information, see the [Azure Cosmos DB connection string documentation](https://learn.microsoft.com/azure/cosmos-db/nosql/how-to-dotnet-get-started#connect-with-a-connection-string).
+
+### Configuration providers
+
+Configure component settings using the `Aspire:Microsoft:Azure:Cosmos` configuration section:
+
+```json
+{
+  "Aspire": {
+    "Microsoft": {
+      "Azure": {
+        "Cosmos": {
+          "DisableTracing": false
+        }
+      }
+    }
+  }
+}
+```
+
+### Inline configuration
+
+Configure settings directly in code using a delegate:
+
+```csharp
+builder.AddAzureCosmosClient("cosmosdb", settings => 
+{
+    settings.DisableTracing = false;
+});
+```
+
+You can also configure the `CosmosClientOptions`:
+
+```csharp
+builder.AddAzureCosmosClient("cosmosdb",
+    configureClientOptions: options => 
+    {
+        options.ApplicationName = "MyApp";
+        options.RequestTimeout = TimeSpan.FromSeconds(30);
+    });
+```
+
+## AppHost integration
+
+In your AppHost project, install the Azure Cosmos DB hosting package:
+
+```bash
+dotnet add package Aspire.Hosting.Azure.CosmosDB
+```
+
+### Production deployment
+
+For production, register an Azure Cosmos DB resource:
+
+```csharp
+var cosmosdb = builder.AddAzureCosmosDB("cosmos")
+                      .AddDatabase("catalog");
+
+var myService = builder.AddProject<Projects.MyService>()
+                       .WithReference(cosmosdb);
+```
+
+### Local development
+
+For local development, you can use the emulator:
+
+```csharp
+var cosmosdb = builder.AddAzureCosmosDB("cosmos")
+                      .RunAsEmulator()
+                      .AddDatabase("catalog");
+
+var myService = builder.AddProject<Projects.MyService>()
+                       .WithReference(cosmosdb);
+```
+
+### Conditional configuration
+
+Use different configurations for publish and development:
+
+```csharp
+var cosmosdb = builder.ExecutionContext.IsPublishMode
+    ? builder.AddAzureCosmosDB("cosmos").AddDatabase("catalog")
+    : builder.AddConnectionString("catalog");
+
+var myService = builder.AddProject<Projects.MyService>()
+                       .WithReference(cosmosdb);
+```
+
+Consume the connection in your service's `Program.cs`:
+
+```csharp
+builder.AddAzureCosmosClient("catalog");
+```
+
+<Note>
+The connection name passed to `WithReference` must match the name used in `AddAzureCosmosClient`.
+</Note>
+
+## Configuration options
+
+The following settings are available:
+
+| Setting | Description | Default |
+|---------|-------------|----------|
+| `DisableTracing` | Disable OpenTelemetry tracing | `false` |
+
+## Observability
+
+### Logging
+
+The component integrates with .NET logging to provide:
+
+- Request information
+- Response status codes
+- Error details
+
+### Tracing
+
+Distributed tracing captures:
+
+- Database operations
+- Query execution time
+- Request charges (RU/s)
+
+Traces appear in the Aspire dashboard and integrate with OpenTelemetry collectors.
+
+## Common scenarios
+
+### CRUD operations
+
+```csharp
+public class ProductRepository
+{
+    private readonly Container _container;
+
+    public ProductRepository(CosmosClient cosmosClient)
+    {
+        var database = cosmosClient.GetDatabase("catalog");
+        _container = database.GetContainer("products");
+    }
+
+    // Create
+    public async Task<Product> CreateAsync(Product product)
+    {
+        var response = await _container.CreateItemAsync(
+            product,
+            new PartitionKey(product.Category));
+        return response.Resource;
+    }
+
+    // Read
+    public async Task<Product> GetByIdAsync(string id, string category)
+    {
+        var response = await _container.ReadItemAsync<Product>(
+            id,
+            new PartitionKey(category));
+        return response.Resource;
+    }
+
+    // Update
+    public async Task<Product> UpdateAsync(Product product)
+    {
+        var response = await _container.ReplaceItemAsync(
+            product,
+            product.Id,
+            new PartitionKey(product.Category));
+        return response.Resource;
+    }
+
+    // Upsert
+    public async Task<Product> UpsertAsync(Product product)
+    {
+        var response = await _container.UpsertItemAsync(
+            product,
+            new PartitionKey(product.Category));
+        return response.Resource;
+    }
+
+    // Delete
+    public async Task DeleteAsync(string id, string category)
+    {
+        await _container.DeleteItemAsync<Product>(
+            id,
+            new PartitionKey(category));
+    }
+}
+```
+
+### Querying with LINQ
+
+```csharp
+public async Task<List<Product>> GetExpensiveProductsAsync()
+{
+    var queryable = _container.GetItemLinqQueryable<Product>();
+    
+    var query = queryable
+        .Where(p => p.Price > 100)
+        .OrderByDescending(p => p.Price)
+        .Take(10);
+
+    using var iterator = query.ToFeedIterator();
+    var results = new List<Product>();
+
+    while (iterator.HasMoreResults)
+    {
+        var response = await iterator.ReadNextAsync();
+        results.AddRange(response);
+    }
+
+    return results;
+}
+```
+
+### Batch operations
+
+```csharp
+public async Task BulkCreateAsync(List<Product> products)
+{
+    var tasks = new List<Task>();
+    
+    foreach (var product in products)
+    {
+        tasks.Add(_container.CreateItemAsync(
+            product,
+            new PartitionKey(product.Category)));
+    }
+
+    await Task.WhenAll(tasks);
+}
+```
+
+### Transactional batch
+
+```csharp
+public async Task TransactionalUpdateAsync(
+    string partitionKey, 
+    List<Product> products)
+{
+    var batch = _container.CreateTransactionalBatch(
+        new PartitionKey(partitionKey));
+
+    foreach (var product in products)
+    {
+        batch.UpsertItem(product);
+    }
+
+    using var response = await batch.ExecuteAsync();
+    
+    if (!response.IsSuccessStatusCode)
+    {
+        throw new Exception($"Batch failed: {response.StatusCode}");
+    }
+}
+```
+
+### Change feed processor
+
+```csharp
+public async Task StartChangeFeedProcessorAsync()
+{
+    var leaseContainer = _cosmosClient
+        .GetDatabase("catalog")
+        .GetContainer("leases");
+
+    var processor = _container
+        .GetChangeFeedProcessorBuilder<Product>(
+            "productProcessor",
+            HandleChangesAsync)
+        .WithInstanceName("instance1")
+        .WithLeaseContainer(leaseContainer)
+        .Build();
+
+    await processor.StartAsync();
+}
+
+private async Task HandleChangesAsync(
+    IReadOnlyCollection<Product> changes,
+    CancellationToken cancellationToken)
+{
+    foreach (var product in changes)
+    {
+        Console.WriteLine($"Change detected: {product.Id}");
+        // Process the change
+    }
+}
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Choose partition keys carefully">
+    Select partition keys that evenly distribute your data and align with your query patterns:
+    
+    ```csharp
+    // Good: Evenly distributed
+    public class Product
+    {
+        public string Id { get; set; }
+        public string Category { get; set; }  // Partition key
+    }
+    
+    // Avoid: Skewed distribution
+    public class Order
+    {
+        public string Id { get; set; }
+        public bool IsActive { get; set; }  // Only two possible values!
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use point reads when possible">
+    Point reads (by ID and partition key) are the most efficient:
+    
+    ```csharp
+    // Most efficient
+    var product = await _container.ReadItemAsync<Product>(
+        id, new PartitionKey(category));
+    
+    // Less efficient
+    var products = await QueryAsync("SELECT * FROM c WHERE c.id = @id");
+    ```
+  </Accordion>
+  
+  <Accordion title="Implement retry logic">
+    Handle rate limiting (429) and transient errors:
+    
+    ```csharp
+    try
+    {
+        await _container.CreateItemAsync(product, new PartitionKey(product.Category));
+    }
+    catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+    {
+        await Task.Delay(ex.RetryAfter ?? TimeSpan.FromSeconds(1));
+        // Retry the operation
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Monitor request charges">
+    Track RU consumption to optimize costs:
+    
+    ```csharp
+    var response = await _container.ReadItemAsync<Product>(
+        id, new PartitionKey(category));
+    
+    Console.WriteLine($"Request charge: {response.RequestCharge} RU/s");
+    ```
+  </Accordion>
+  
+  <Accordion title="Use bulk execution for large operations">
+    Enable bulk execution mode for better performance:
+    
+    ```csharp
+    builder.AddAzureCosmosClient("cosmosdb",
+        configureClientOptions: options => 
+        {
+            options.AllowBulkExecution = true;
+        });
+    ```
+  </Accordion>
+  
+  <Accordion title="Index only necessary properties">
+    Reduce storage costs and improve write performance by customizing indexing:
+    
+    ```csharp
+    var containerProperties = new ContainerProperties
+    {
+        Id = "products",
+        PartitionKeyPath = "/category",
+        IndexingPolicy = new IndexingPolicy
+        {
+            IndexingMode = IndexingMode.Consistent,
+            ExcludedPaths = { new ExcludedPath { Path = "/largeField/*" } }
+        }
+    };
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Additional resources
+
+- [Azure Cosmos DB .NET SDK documentation](https://learn.microsoft.com/azure/cosmos-db/nosql/sdk-dotnet-v3)
+- [Azure Cosmos DB best practices](https://learn.microsoft.com/azure/cosmos-db/nosql/best-practice-dotnet)
+- [.NET Aspire components](https://github.com/dotnet/aspire/tree/main/src/Components)
+
+## Related components
+
+<CardGroup cols={2}>
+
+<Card title="MongoDB" icon="database" href="/components/mongodb">
+  Work with MongoDB databases
+</Card>
+
+<Card title="Azure Storage" icon="cloud" href="/components/azure-storage">
+  Connect to Azure Storage services
+</Card>
+
+<Card title="Azure Service Bus" icon="cloud" href="/components/azure-service-bus">
+  Work with Azure Service Bus
+</Card>
+
+<Card title="Cosmos DB Hosting" icon="server" href="/hosting/azure-cosmos-db">
+  Learn about the Cosmos DB hosting integration
+</Card>
+
+</CardGroup>

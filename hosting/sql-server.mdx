@@ -1,0 +1,196 @@
+---
+title: SQL Server Hosting Integration
+description: Add SQL Server database resources to your .NET Aspire application
+---
+
+The .NET Aspire SQL Server hosting integration provides extension methods for adding SQL Server server and database resources to your distributed application.
+
+## Installation
+
+Install the SQL Server hosting integration package in your AppHost project:
+
+```bash
+dotnet add package Aspire.Hosting.SqlServer
+```
+
+## Usage
+
+### Add SQL Server and Database
+
+In your AppHost project (`AppHost.cs`), add a SQL Server resource and database:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var sql = builder.AddSqlServer("sql")
+                 .AddDatabase("mydb");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(sql);
+
+builder.Build().Run();
+```
+
+### Consume in Service
+
+In your service project, reference the database using the client integration:
+
+```bash
+dotnet add package Aspire.Microsoft.Data.SqlClient
+```
+
+Then in `Program.cs`:
+
+```csharp
+builder.AddSqlServerClient("mydb");
+```
+
+## API Reference
+
+### AddSqlServer
+
+Adds a SQL Server resource to the application model. A container is used for local development.
+
+```csharp
+public static IResourceBuilder<SqlServerServerResource> AddSqlServer(
+    this IDistributedApplicationBuilder builder,
+    string name,
+    IResourceBuilder<ParameterResource>? password = null,
+    int? port = null)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+- `password` - The parameter used to provide the administrator password for the SQL Server resource. If `null` a random password will be generated.
+- `port` - The host port for the SQL Server.
+
+#### Returns
+
+A reference to the `IResourceBuilder<SqlServerServerResource>`.
+
+#### Remarks
+
+The password must be at least 8 characters long and contain characters from three of the following four sets: Uppercase letters, Lowercase letters, Base 10 digits, and Symbols.
+
+### AddDatabase
+
+Adds a SQL Server database to the application model.
+
+```csharp
+public static IResourceBuilder<SqlServerDatabaseResource> AddDatabase(
+    this IResourceBuilder<SqlServerServerResource> builder,
+    string name,
+    string? databaseName = null)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+- `databaseName` - The name of the database. If not provided, defaults to the same value as `name`.
+
+## Configuration Examples
+
+### Custom Port
+
+```csharp
+var sql = builder.AddSqlServer("sql", port: 1433);
+```
+
+### Custom Password
+
+```csharp
+var password = builder.AddParameter("sql-password", secret: true);
+var sql = builder.AddSqlServer("sql", password: password);
+```
+
+### Data Persistence with Volumes
+
+```csharp
+var sql = builder.AddSqlServer("sql")
+                 .WithDataVolume();
+```
+
+### Multiple Databases
+
+```csharp
+var sql = builder.AddSqlServer("sql");
+var catalogDb = sql.AddDatabase("catalog");
+var orderDb = sql.AddDatabase("orders");
+
+var catalogService = builder.AddProject<Projects.CatalogService>("catalog")
+                            .WithReference(catalogDb);
+
+var orderService = builder.AddProject<Projects.OrderService>("orders")
+                          .WithReference(orderDb);
+```
+
+### Named Volumes
+
+```csharp
+var sql = builder.AddSqlServer("sql")
+                 .WithDataVolume("myapp-sqlserver-data");
+```
+
+### Bind Mounts
+
+```csharp
+var sql = builder.AddSqlServer("sql")
+                 .WithDataBindMount("./sqlserver-data");
+```
+
+## Connection Properties
+
+When you reference a SQL Server resource using `WithReference`, the following connection properties are made available to the consuming project.
+
+### SQL Server
+
+| Property Name | Description |
+|---------------|-------------|
+| `Host` | The hostname or IP address of the SQL Server |
+| `Port` | The port number the SQL Server is listening on |
+| `Username` | The username for authentication |
+| `Password` | The password for authentication |
+| `Uri` | The connection URI in mssql:// format, with the format `mssql://{Username}:{Password}@{Host}:{Port}` |
+| `JdbcConnectionString` | JDBC-format connection string, with the format `jdbc:sqlserver://{Host}:{Port};trustServerCertificate=true`. User and password credentials are provided as separate `Username` and `Password` properties. |
+
+### SQL Server Database
+
+The SQL Server database resource inherits all properties from its parent `SqlServerServerResource` and adds:
+
+| Property Name | Description |
+|---------------|-------------|
+| `Uri` | The connection URI in mssql:// format, with the format `mssql://{Username}:{Password}@{Host}:{Port}/{DatabaseName}` |
+| `JdbcConnectionString` | JDBC connection string with database name, with the format `jdbc:sqlserver://{Host}:{Port};trustServerCertificate=true;databaseName={DatabaseName}`. User and password credentials are provided as separate `Username` and `Password` properties. |
+| `DatabaseName` | The name of the database |
+
+### Environment Variables
+
+Aspire exposes each property as an environment variable named `[RESOURCE]_[PROPERTY]`. For instance:
+
+- The `Uri` property of a resource called `mydb` becomes `MYDB_URI`
+- The `DatabaseName` property becomes `MYDB_DATABASENAME`
+
+## Health Checks
+
+The SQL Server hosting integration includes built-in health checks. When a resource is referenced as a dependency using `WaitFor`, the dependent resource will wait until the SQL Server resource is able to service requests.
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(sql)
+                 .WaitFor(sql);
+```
+
+## Container Image
+
+The SQL Server hosting integration uses the official Microsoft SQL Server container image from the Microsoft Container Registry.
+
+<Note>
+By using the SQL Server container image, you accept the [SQL Server End-User License Agreement (EULA)](https://go.microsoft.com/fwlink/?linkid=857698). The container automatically sets `ACCEPT_EULA=Y`.
+</Note>
+
+## Additional Resources
+
+- [SQL Server Documentation](https://learn.microsoft.com/sql/sql-server/)
+- [Microsoft.Data.SqlClient](https://learn.microsoft.com/sql/connect/ado-net/microsoft-ado-net-sql-server)
+- [Aspire SQL Server Client Integration](/components/sql-client)

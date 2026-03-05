@@ -1,0 +1,208 @@
+---
+title: aspire init
+description: Initialize Aspire in an existing .NET solution by adding AppHost and ServiceDefaults projects.
+---
+
+# aspire init
+
+Initialize Aspire in an existing codebase by creating an AppHost project, a ServiceDefaults project, and optionally adding references to existing projects.
+
+## Usage
+
+```bash
+aspire init [options]
+```
+
+## Description
+
+The `aspire init` command adds Aspire orchestration to an existing .NET solution. It detects your solution file, creates the necessary Aspire projects, and guides you through integrating existing projects into your AppHost.
+
+### What it Does
+
+1. **Detects your solution** - Walks up the directory tree to find a `.sln` file
+2. **Creates AppHost project** - Adds a new `<SolutionName>.AppHost` project for orchestration
+3. **Creates ServiceDefaults project** - Adds a new `<SolutionName>.ServiceDefaults` project for shared configuration
+4. **Adds projects to solution** - Both new projects are added to your solution
+5. **Integrates existing projects** - Prompts you to add references to existing executable projects
+6. **Adds ServiceDefaults references** - Optionally adds ServiceDefaults to selected projects
+
+### Behavior Without a Solution
+
+If no solution file is found, `aspire init` creates a single-file AppHost in the current directory using the `aspire-apphost-singlefile` template.
+
+## Options
+
+<ParamField path="--source" type="string">
+  The NuGet source to use for project templates
+  
+  Example: `--source https://api.nuget.org/v3/index.json`
+</ParamField>
+
+<ParamField path="--version" type="string">
+  The version of the project templates to use
+  
+  Example: `--version 10.0.0-preview.1.25067.1`
+</ParamField>
+
+<ParamField path="--channel" type="string">
+  Channel to use for templates: `stable`, `daily`, or `staging` (when enabled)
+  
+  If not specified, uses the configured channel from `aspire config get channel` or defaults to `stable`.
+</ParamField>
+
+<ParamField path="--language" type="string">
+  The programming language for the AppHost: `csharp` or `typescript`
+  
+  For TypeScript AppHosts, a polyglot AppHost is created without solution integration.
+</ParamField>
+
+## Examples
+
+### Initialize in an existing solution
+
+```bash
+cd MySolution
+aspire init
+```
+
+Output:
+```
+✓ Solution detected: MySolution.sln
+✓ Reading solution...
+✓ Evaluating existing projects...
+
+# Add existing projects to AppHost?
+
+The following projects were found in the solution that can be
+hosted in Aspire. Select the ones that you would like to be
+added to the AppHost project.
+
+  [x] MyWebApp
+  [x] MyApiService
+  [ ] MyBackgroundService
+
+✓ Adding AppHost project to solution...
+✓ Adding ServiceDefaults project to solution...
+✓ Adding MyWebApp to AppHost...
+✓ Adding MyApiService to AppHost...
+✓ Aspire initialization complete!
+```
+
+### Create a single-file AppHost
+
+```bash
+mkdir MyProject
+cd MyProject
+aspire init
+```
+
+Output:
+```
+✓ No solution file found. Creating single-file AppHost...
+✓ Getting templates...
+✓ Creating Aspire projects from template...
+✓ Aspire initialization complete!
+```
+
+### Use a specific template version
+
+```bash
+aspire init --version 10.0.0-preview.1.25067.1
+```
+
+### Use the daily channel
+
+```bash
+aspire init --channel daily
+```
+
+### Create a TypeScript AppHost
+
+```bash
+aspire init --language typescript
+```
+
+## Interactive Prompts
+
+### Project Selection
+
+When initializing an existing solution, you'll be prompted to select which executable projects to add to your AppHost:
+
+```
+Select projects to add to the AppHost:
+  [x] MyWebApp (net10.0)
+  [x] MyApiService (net10.0)
+  [ ] MyTests (net10.0)
+```
+
+Only projects with `OutputType` of `Exe` or `WinExe` and supported target frameworks (net8.0, net9.0, net10.0) are shown.
+
+### ServiceDefaults Selection
+
+After selecting projects to add, you'll be prompted to choose which projects should reference ServiceDefaults:
+
+```
+Add ServiceDefaults reference?
+  > Add to all previously added projects
+    Let me choose
+    Do not add to any projects
+```
+
+The ServiceDefaults project contains telemetry configuration and service discovery helpers.
+
+### Template Version Selection
+
+If multiple template versions are available, you'll be prompted to choose:
+
+```
+# Which version of Aspire do you want to use?
+
+Multiple versions of Aspire are available. If you want to use
+the latest stable version choose 10.0.0.
+
+Select a template version:
+  > 10.0.0 (nuget.org)
+    10.0.0-preview.1.25067.1 (nuget.org)
+    daily
+```
+
+## Files Created
+
+For a solution named `MySolution`, the following structure is created:
+
+```
+MySolution/
+├── MySolution.sln
+├── MySolution.AppHost/
+│   ├── MySolution.AppHost.csproj
+│   ├── Program.cs
+│   ├── appsettings.json
+│   ├── appsettings.Development.json
+│   └── Properties/
+│       └── launchSettings.json
+└── MySolution.ServiceDefaults/
+    ├── MySolution.ServiceDefaults.csproj
+    └── Extensions.cs
+```
+
+## Target Framework Selection
+
+The AppHost project's target framework is automatically set to the highest framework version of all selected projects:
+
+- If you select projects targeting `net9.0` and `net10.0`, the AppHost will target `net10.0`
+- If no projects are selected, the AppHost defaults to `net9.0`
+
+## Configuration
+
+The `--channel` option can be set globally to avoid specifying it each time:
+
+```bash
+aspire config set channel daily
+aspire init  # Uses daily channel
+```
+
+## See Also
+
+- [aspire new](/cli/new) - Create a new Aspire application from a template
+- [aspire run](/cli/run) - Run your initialized AppHost
+- [aspire add](/cli/add) - Add integrations to your AppHost

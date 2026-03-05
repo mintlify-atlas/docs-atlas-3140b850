@@ -1,0 +1,399 @@
+---
+title: ContainerResource
+description: API reference for Docker container resources in Aspire
+---
+
+The `ContainerResource` class represents a Docker container that can be run as part of your distributed application. It provides extensive configuration options for images, volumes, networking, and runtime behavior.
+
+## Class Definition
+
+```csharp
+public class ContainerResource : Resource,
+    IResourceWithEnvironment,
+    IResourceWithArgs,
+    IResourceWithEndpoints,
+    IResourceWithWaitSupport,
+    IResourceWithProbes
+{
+    public ContainerResource(string name, string? entrypoint = null);
+    
+    public string? Entrypoint { get; set; }
+}
+```
+
+### Constructor
+
+<ParamField path="name" type="string" required>
+  Unique name for the container resource. Used for service discovery and references.
+</ParamField>
+
+<ParamField path="entrypoint" type="string">
+  Optional custom entrypoint that overrides the container image's default ENTRYPOINT.
+</ParamField>
+
+### Properties
+
+<ResponseField name="Entrypoint" type="string?">
+  Gets or sets the container entrypoint. `null` means use the default from the image.
+</ResponseField>
+
+## Creating Containers
+
+### Basic Container
+
+<CodeGroup>
+```csharp Simple Container
+builder.AddContainer("redis", "redis");
+```
+
+```csharp With Tag
+builder.AddContainer("postgres", "postgres", "16-alpine");
+```
+
+```csharp From Registry
+builder.AddContainer("myapp", "myregistry.azurecr.io/myapp", "latest");
+```
+</CodeGroup>
+
+### From Dockerfile
+
+<CodeGroup>
+```csharp Basic Dockerfile
+builder.AddDockerfile("myapp", "./src/MyApp");
+```
+
+```csharp Custom Dockerfile
+builder.AddDockerfile("myapp", "./src/MyApp", "Dockerfile.production");
+```
+
+```csharp Multi-Stage Build
+builder.AddDockerfile("myapp", "./src/MyApp", stage: "production");
+```
+
+```csharp Dynamic Dockerfile
+builder.AddDockerfileFactory("myapp", "./src", context => 
+{
+    return $"""
+        FROM alpine:latest
+        RUN echo 'Generated at {DateTime.UtcNow}'
+        COPY . /app
+        CMD ["/app/run.sh"]
+        """;
+});
+```
+</CodeGroup>
+
+## Image Configuration
+
+### Image Methods
+
+<ParamField path="WithImage(image, tag)" type="IResourceBuilder<ContainerResource>">
+  Sets the container image and optional tag.
+  
+  **Parameters:**
+  - `image` - Image name (e.g., "redis", "postgres")
+  - `tag` - Optional tag (defaults to "latest")
+  
+  **Example:**
+  ```csharp
+  builder.AddContainer("app", "placeholder")
+         .WithImage("myapp", "v2.0");
+  ```
+</ParamField>
+
+<ParamField path="WithImageTag(tag)" type="IResourceBuilder<ContainerResource>">
+  Changes the image tag without modifying the image name.
+  
+  **Example:**
+  ```csharp
+  builder.AddContainer("postgres", "postgres")
+         .WithImageTag("16-alpine");
+  ```
+</ParamField>
+
+<ParamField path="WithImageRegistry(registry)" type="IResourceBuilder<ContainerResource>">
+  Sets the container registry to pull the image from.
+  
+  **Example:**
+  ```csharp
+  builder.AddContainer("app", "myapp")
+         .WithImageRegistry("myregistry.azurecr.io");
+  ```
+</ParamField>
+
+<ParamField path="WithImageSHA256(sha256)" type="IResourceBuilder<ContainerResource>">
+  Pins the image to a specific SHA256 digest for immutability.
+  
+  **Example:**
+  ```csharp
+  builder.AddContainer("nginx", "nginx")
+         .WithImageSHA256("a1b2c3d4e5f6...");
+  ```
+</ParamField>
+
+## Storage Configuration
+
+### Volumes
+
+Volumes are managed by Docker and persist data between container restarts.
+
+<CodeGroup>
+```csharp Named Volume
+builder.AddContainer("postgres", "postgres")
+       .WithVolume("postgres-data", "/var/lib/postgresql/data");
+```
+
+```csharp Anonymous Volume
+builder.AddContainer("redis", "redis")
+       .WithVolume("/data");
+```
+
+```csharp Read-Only Volume
+builder.AddContainer("app", "myapp")
+       .WithVolume("config", "/etc/app/config", isReadOnly: true);
+```
+
+```csharp Shared Volume
+var volumeName = "shared-data";
+
+builder.AddContainer("writer", "writer-image")
+       .WithVolume(volumeName, "/data");
+
+builder.AddContainer("reader", "reader-image")
+       .WithVolume(volumeName, "/data", isReadOnly: true);
+```
+</CodeGroup>
+
+<ParamField path="WithVolume(name, target, isReadOnly)" type="IResourceBuilder<ContainerResource>">
+  Adds a Docker volume to the container.
+  
+  **Parameters:**
+  - `name` - Volume name (null creates anonymous volume)
+  - `target` - Mount path inside container
+  - `isReadOnly` - Whether the volume is read-only
+</ParamField>
+
+### Bind Mounts
+
+Bind mounts map host directories/files into the container.
+
+<CodeGroup>
+```csharp Configuration Files
+builder.AddContainer("nginx", "nginx")
+       .WithBindMount("./nginx.conf", "/etc/nginx/nginx.conf", isReadOnly: true);
+```
+
+```csharp Development Files
+builder.AddContainer("app", "node")
+       .WithBindMount("../ClientApp", "/app")
+       .WithBindMount("../ClientApp/node_modules", "/app/node_modules");
+```
+
+```csharp Absolute Path
+builder.AddContainer("app", "myapp")
+       .WithBindMount("/mnt/shared/config", "/etc/app/config", isReadOnly: true);
+```
+</CodeGroup>
+
+<ParamField path="WithBindMount(source, target, isReadOnly)" type="IResourceBuilder<ContainerResource>">
+  Mounts a host directory or file into the container.
+  
+  **Parameters:**
+  - `source` - Host path (relative to app host directory or absolute)
+  - `target` - Mount path inside container
+  - `isReadOnly` - Whether the mount is read-only
+  
+  <Note>
+    Relative paths are resolved from the app host project directory (`builder.AppHostDirectory`).
+  </Note>
+</ParamField>
+
+## Runtime Configuration
+
+### Entrypoint and Command
+
+<CodeGroup>
+```csharp Custom Entrypoint
+builder.AddContainer("app", "alpine")
+       .WithEntrypoint("/bin/sh");
+```
+
+```csharp With Arguments
+builder.AddContainer("postgres", "postgres")
+       .WithArgs("postgres", "-c", "log_statement=all");
+```
+
+```csharp Combined
+builder.AddContainer("app", "myapp")
+       .WithEntrypoint("/app/start.sh")
+       .WithArgs("--port", "8080", "--verbose");
+```
+</CodeGroup>
+
+### Container Lifetime
+
+<CodeGroup>
+```csharp Session Lifetime (Default)
+builder.AddContainer("redis", "redis")
+       .WithLifetime(ContainerLifetime.Session);
+// Container is removed when app stops
+```
+
+```csharp Persistent Lifetime
+builder.AddContainer("postgres", "postgres")
+       .WithLifetime(ContainerLifetime.Persistent);
+// Container persists across app restarts
+```
+</CodeGroup>
+
+<ParamField path="WithLifetime(lifetime)" type="IResourceBuilder<ContainerResource>">
+  Sets the container lifetime behavior.
+  
+  **Values:**
+  - `ContainerLifetime.Session` - Container is removed when app stops (default)
+  - `ContainerLifetime.Persistent` - Container persists across app restarts
+  
+  <Warning>
+    Persistent containers are useful for databases but can accumulate over time. Clean them up manually when no longer needed.
+  </Warning>
+</ParamField>
+
+### Image Pull Policy
+
+<CodeGroup>
+```csharp Always Pull
+builder.AddContainer("app", "myapp")
+       .WithImagePullPolicy(ImagePullPolicy.Always);
+```
+
+```csharp Never Pull
+builder.AddContainer("app", "myapp")
+       .WithImagePullPolicy(ImagePullPolicy.Never);
+```
+
+```csharp Pull If Not Present
+builder.AddContainer("app", "myapp")
+       .WithImagePullPolicy(ImagePullPolicy.IfNotPresent);
+```
+</CodeGroup>
+
+<ParamField path="WithImagePullPolicy(policy)" type="IResourceBuilder<ContainerResource>">
+  Controls when the container runtime pulls the image.
+  
+  **Values:**
+  - `ImagePullPolicy.Always` - Always pull the image
+  - `ImagePullPolicy.IfNotPresent` - Pull only if not cached locally
+  - `ImagePullPolicy.Never` - Never pull, fail if not cached
+</ParamField>
+
+### Container Runtime Arguments
+
+Pass arguments directly to the container runtime (docker run or podman run).
+
+<CodeGroup>
+```csharp GPU Support
+builder.AddContainer("ml-app", "tensorflow-gpu")
+       .WithContainerRuntimeArgs("--gpus", "all");
+```
+
+```csharp Memory Limits
+builder.AddContainer("app", "myapp")
+       .WithContainerRuntimeArgs("--memory", "2g", "--memory-swap", "4g");
+```
+
+```csharp Privileged Mode
+builder.AddContainer("docker-in-docker", "docker:dind")
+       .WithContainerRuntimeArgs("--privileged");
+```
+</CodeGroup>
+
+<ParamField path="WithContainerRuntimeArgs(args)" type="IResourceBuilder<ContainerResource>">
+  Adds arguments to the container runtime command (not the container entrypoint).
+  
+  **Parameters:**
+  - `args` - String arguments passed to docker/podman run
+  
+  <Warning>
+    These are advanced arguments passed to the container runtime. Use with caution as they can affect security and stability.
+  </Warning>
+</ParamField>
+
+## Networking
+
+### Endpoints
+
+<CodeGroup>
+```csharp HTTP Endpoint
+builder.AddContainer("api", "api-image")
+       .WithHttpEndpoint(port: 8080, name: "http");
+```
+
+```csharp Multiple Endpoints
+builder.AddContainer("web", "web-image")
+       .WithHttpEndpoint(port: 8080, name: "http")
+       .WithHttpsEndpoint(port: 8443, name: "https");
+```
+
+```csharp Custom Protocol
+builder.AddContainer("grpc-service", "grpc-image")
+       .WithEndpoint(targetPort: 5001, port: 5001, 
+                    scheme: "http", name: "grpc");
+```
+
+```csharp TCP Endpoint
+builder.AddContainer("redis", "redis")
+       .WithEndpoint(targetPort: 6379, scheme: "tcp", name: "redis");
+```
+</CodeGroup>
+
+See [IResourceBuilder - Endpoints](/api/resource-builder#endpoints) for detailed endpoint configuration.
+
+## Complete Examples
+
+### PostgreSQL Database
+
+```csharp Production PostgreSQL
+var postgres = builder.AddContainer("postgres", "postgres", "16-alpine")
+    .WithEnvironment("POSTGRES_USER", "admin")
+    .WithEnvironment("POSTGRES_PASSWORD", builder.AddParameter("db-password", secret: true))
+    .WithEnvironment("POSTGRES_DB", "myapp")
+    .WithVolume("postgres-data", "/var/lib/postgresql/data")
+    .WithBindMount("./db/init", "/docker-entrypoint-initdb.d", isReadOnly: true)
+    .WithEndpoint(targetPort: 5432, port: 5432, name: "postgres")
+    .WithLifetime(ContainerLifetime.Persistent);
+```
+
+### Nginx Reverse Proxy
+
+```csharp Custom Nginx
+builder.AddContainer("nginx", "nginx", "alpine")
+    .WithBindMount("./nginx/nginx.conf", "/etc/nginx/nginx.conf", isReadOnly: true)
+    .WithBindMount("./nginx/conf.d", "/etc/nginx/conf.d", isReadOnly: true)
+    .WithBindMount("./static", "/usr/share/nginx/html", isReadOnly: true)
+    .WithHttpEndpoint(port: 80, name: "http")
+    .WithHttpsEndpoint(port: 443, name: "https");
+```
+
+### Custom Application Container
+
+```csharp Full Configuration
+var apiKey = builder.AddParameter("api-key", secret: true);
+var cache = builder.AddRedis("cache");
+
+builder.AddDockerfile("myapp", "./src/MyApp")
+    .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Production")
+    .WithEnvironment("API_KEY", apiKey)
+    .WithEnvironment("REDIS_HOST", cache.GetEndpoint("tcp"))
+    .WithHttpsEndpoint(port: 8443)
+    .WithVolume("app-data", "/app/data")
+    .WithBindMount("./config", "/app/config", isReadOnly: true)
+    .WithReference(cache)
+    .WithImagePullPolicy(ImagePullPolicy.Always)
+    .WithLifetime(ContainerLifetime.Session);
+```
+
+## Related APIs
+
+- [IResourceBuilder](/api/resource-builder) - Builder configuration methods
+- [Hosting Extensions](/api/hosting-extensions) - Adding resources to applications
+- [IResource](/api/resource-interfaces) - Resource interfaces and contracts

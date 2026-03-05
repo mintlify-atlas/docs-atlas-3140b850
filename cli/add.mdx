@@ -1,0 +1,296 @@
+---
+title: aspire add
+description: Add hosting integrations like databases, message queues, and cloud services to your Aspire AppHost.
+---
+
+# aspire add
+
+Add a hosting integration to the AppHost.
+
+## Usage
+
+```bash
+aspire add [integration] [options]
+aspire add [options]  # Interactive integration selection
+```
+
+## Description
+
+The `aspire add` command adds NuGet packages for Aspire hosting integrations to your AppHost project. Integrations provide pre-configured resources like databases, message queues, caching, and cloud services.
+
+### What it Does
+
+1. **Searches for integrations** - Queries NuGet feeds for available Aspire hosting packages
+2. **Prompts for selection** - Shows available integrations and versions
+3. **Stops running instances** - Automatically stops any running AppHost to avoid file locks
+4. **Adds the package** - Runs `dotnet add package` to install the integration
+5. **Confirms success** - Displays the installed package and version
+
+After adding an integration, you'll need to update your `Program.cs` to use it.
+
+## Arguments
+
+<ParamField path="integration" type="string">
+  The name of the integration to add (e.g., `redis`, `postgres`, `rabbitmq`)
+  
+  Example: `aspire add redis`
+  
+  If not specified, you'll be prompted to select from available integrations.
+  
+  Supports fuzzy matching: `aspire add pg` will find PostgreSQL integrations.
+</ParamField>
+
+## Options
+
+<ParamField path="--apphost" type="string">
+  The path to the Aspire AppHost project file
+  
+  Example: `--apphost ./src/MyApp.AppHost/MyApp.AppHost.csproj`
+  
+  If not specified, the CLI searches for an AppHost project in the current directory and parent directories.
+</ParamField>
+
+<ParamField path="--version" type="string">
+  The version of the integration to add
+  
+  Example: `--version 10.0.0`
+  
+  If not specified, you'll be prompted to select from available versions.
+</ParamField>
+
+<ParamField path="--source" type="string">
+  The NuGet source to use for the integration
+  
+  Example: `--source https://api.nuget.org/v3/index.json`
+</ParamField>
+
+## Examples
+
+### Add Redis
+
+```bash
+aspire add redis
+```
+
+Output:
+```
+✓ Searching for Aspire integrations...
+✓ Adding Aspire hosting integration...
+✓ The package Aspire.Hosting.Redis::10.0.0 was added successfully.
+```
+
+After adding, update your `Program.cs`:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var redis = builder.AddRedis("cache");
+
+var api = builder.AddProject<Projects.MyApi>("api")
+    .WithReference(redis);
+
+builder.Build().Run();
+```
+
+### Add with interactive selection
+
+```bash
+aspire add
+```
+
+You'll see a list of available integrations:
+
+```
+Select an integration to add:
+  > redis (Aspire.Hosting.Redis)
+    postgres (Aspire.Hosting.PostgreSQL)
+    rabbitmq (Aspire.Hosting.RabbitMQ)
+    sql-server (Aspire.Hosting.SqlServer)
+    mongodb (Aspire.Hosting.MongoDB)
+    ...
+```
+
+### Add PostgreSQL
+
+```bash
+aspire add postgres
+```
+
+Then use it:
+
+```csharp
+var postgres = builder.AddPostgres("postgres")
+    .AddDatabase("mydb");
+
+var api = builder.AddProject<Projects.MyApi>("api")
+    .WithReference(postgres);
+```
+
+### Add with fuzzy search
+
+```bash
+aspire add rabbit
+```
+
+This finds and selects `Aspire.Hosting.RabbitMQ`.
+
+### Add a specific version
+
+```bash
+aspire add redis --version 10.0.0-preview.1.25067.1
+```
+
+### Add from a custom source
+
+```bash
+aspire add redis --source https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet10/nuget/v3/index.json
+```
+
+## Available Integrations
+
+### Databases
+
+- **postgres** - PostgreSQL database (`Aspire.Hosting.PostgreSQL`)
+- **sql-server** - SQL Server database (`Aspire.Hosting.SqlServer`)
+- **mysql** - MySQL database (`Aspire.Hosting.MySql`)
+- **mongodb** - MongoDB database (`Aspire.Hosting.MongoDB`)
+- **oracle** - Oracle database (`Aspire.Hosting.Oracle`)
+
+### Caching & State
+
+- **redis** - Redis cache and pub/sub (`Aspire.Hosting.Redis`)
+- **garnet** - Garnet cache (`Aspire.Hosting.Garnet`)
+- **valkey** - Valkey cache (`Aspire.Hosting.Valkey`)
+
+### Messaging
+
+- **rabbitmq** - RabbitMQ message broker (`Aspire.Hosting.RabbitMQ`)
+- **kafka** - Apache Kafka (`Aspire.Hosting.Kafka`)
+- **nats** - NATS messaging (`Aspire.Hosting.Nats`)
+
+### Azure Services
+
+- **azure-storage** - Azure Storage (Blobs, Queues, Tables) (`Aspire.Hosting.Azure.Storage`)
+- **azure-cosmos-db** - Azure Cosmos DB (`Aspire.Hosting.Azure.CosmosDB`)
+- **azure-service-bus** - Azure Service Bus (`Aspire.Hosting.Azure.ServiceBus`)
+- **azure-key-vault** - Azure Key Vault (`Aspire.Hosting.Azure.KeyVault`)
+- **azure-event-hubs** - Azure Event Hubs (`Aspire.Hosting.Azure.EventHubs`)
+
+### Observability
+
+- **seq** - Seq structured logging (`Aspire.Hosting.Seq`)
+- **elastic** - Elasticsearch (`Aspire.Hosting.Elasticsearch`)
+
+### Other Services
+
+- **milvus** - Milvus vector database (`Aspire.Hosting.Milvus`)
+- **qdrant** - Qdrant vector database (`Aspire.Hosting.Qdrant`)
+
+For a complete list, run `aspire add` and browse the interactive list.
+
+## Integration Naming
+
+Package names are converted to friendly short names:
+
+- `Aspire.Hosting.Redis` → `redis`
+- `Aspire.Hosting.PostgreSQL` → `postgresql`
+- `Aspire.Hosting.Azure.Storage` → `azure-storage`
+
+Both the friendly name and full package ID are accepted:
+
+```bash
+aspire add redis
+aspire add Aspire.Hosting.Redis  # Same result
+```
+
+## Version Selection
+
+When multiple versions are available, you'll be prompted:
+
+```
+Select a version of Aspire.Hosting.Redis:
+  > 10.0.0 (nuget.org)
+    10.0.0-preview.1.25067.1 (nuget.org)
+    daily
+```
+
+- **Stable versions** are listed first
+- **Preview versions** are shown with their full version numbers
+- **Daily channel** provides the latest daily builds
+
+## Channels
+
+Integrations can come from different channels:
+
+- **stable** - Released versions from nuget.org
+- **daily** - Daily builds from dotnet-public feed
+- **staging** - Staging builds (when enabled)
+
+Set a default channel:
+
+```bash
+aspire config set channel daily
+aspire add redis  # Uses daily channel
+```
+
+## Community Integrations
+
+Community-contributed integrations are prioritized in the list for discoverability. These packages start with `CommunityToolkit.Aspire.Hosting.*`.
+
+## Running Instance Detection
+
+Before adding a package, the CLI:
+
+1. Detects any running instances of your AppHost
+2. Stops them automatically to avoid file locks
+3. Displays a message confirming the stop
+
+This prevents `dotnet add package` from failing due to locked project files.
+
+## After Adding an Integration
+
+After running `aspire add`, you need to:
+
+1. **Update Program.cs** - Add the resource to your AppHost
+2. **Add references** - Wire up the integration to your services
+3. **Run the AppHost** - Test the integration
+
+Example workflow:
+
+```bash
+aspire add redis
+```
+
+Edit `Program.cs`:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var redis = builder.AddRedis("cache");
+
+var api = builder.AddProject<Projects.MyApi>("api")
+    .WithReference(redis);
+
+builder.Build().Run();
+```
+
+Run:
+
+```bash
+aspire run
+```
+
+## Removing Integrations
+
+To remove an integration:
+
+```bash
+dotnet remove package Aspire.Hosting.Redis
+```
+
+And remove references from `Program.cs`.
+
+## See Also
+
+- [aspire run](/cli/run) - Run your AppHost with integrations
+- [Hosting Integrations](/hosting/overview) - Learn about all available integrations

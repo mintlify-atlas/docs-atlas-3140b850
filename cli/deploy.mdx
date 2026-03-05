@@ -1,0 +1,323 @@
+---
+title: aspire deploy
+description: Deploy an Aspire AppHost to cloud deployment targets like Azure and Kubernetes.
+---
+
+# aspire deploy
+
+Deploy an AppHost to its deployment targets. (Preview)
+
+## Usage
+
+```bash
+aspire deploy [options]
+```
+
+## Description
+
+The `aspire deploy` command deploys your Aspire application to cloud environments like Azure Container Apps, Azure Kubernetes Service (AKS), or Kubernetes. It generates deployment manifests, provisions infrastructure, and deploys your services.
+
+<Note>
+The `aspire deploy` command is currently in preview and under active development.
+</Note>
+
+### What it Does
+
+1. **Builds the AppHost** - Compiles your AppHost project
+2. **Generates manifests** - Creates deployment manifests based on your AppHost configuration
+3. **Provisions infrastructure** - Creates cloud resources (containers, databases, message queues)
+4. **Deploys services** - Publishes and deploys your containerized services
+5. **Configures networking** - Sets up ingress, service discovery, and communication
+6. **Manages secrets** - Securely handles connection strings and credentials
+
+## Options
+
+<ParamField path="--apphost" type="string">
+  The path to the Aspire AppHost project file
+  
+  Example: `--apphost ./src/MyApp.AppHost/MyApp.AppHost.csproj`
+  
+  If not specified, the CLI searches for an AppHost project in the current directory and parent directories.
+</ParamField>
+
+<ParamField path="--output-path" type="string">
+  The optional output path for deployment artifacts
+  
+  Example: `--output-path ./deploy`
+  
+  Deployment artifacts include manifests, Dockerfiles, and configuration files.
+</ParamField>
+
+<ParamField path="--environment" type="string">
+  The deployment environment name
+  
+  Example: `--environment Production`
+  
+  This maps to ASP.NET Core environment names and can be used to configure environment-specific settings.
+</ParamField>
+
+<ParamField path="--log-level" type="string">
+  Set the logging verbosity level
+  
+  Options: `Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical`
+  
+  Example: `--log-level Debug`
+</ParamField>
+
+<ParamField path="--include-exception-details" type="boolean">
+  Include exception details in error messages
+  
+  Example: `--include-exception-details`
+  
+  Useful for debugging deployment failures.
+</ParamField>
+
+<ParamField path="--clear-cache" type="boolean">
+  Clear the deployment cache and do not save deployment state
+  
+  Example: `--clear-cache`
+  
+  Forces a fresh deployment without using cached state.
+</ParamField>
+
+## Examples
+
+### Deploy to default target
+
+```bash
+aspire deploy
+```
+
+Output:
+```
+✓ Building AppHost...
+✓ Generating deployment manifests...
+✓ Provisioning infrastructure...
+✓ Deploying services...
+✓ DEPLOYMENT COMPLETED
+
+Deployment completed successfully.
+```
+
+### Deploy to a specific environment
+
+```bash
+aspire deploy --environment Production
+```
+
+This sets `ASPNETCORE_ENVIRONMENT=Production`, which can be used to:
+- Load environment-specific `appsettings.Production.json` files
+- Configure production database connection strings
+- Enable/disable features based on environment
+
+### Deploy with artifacts output
+
+```bash
+aspire deploy --output-path ./deploy
+```
+
+This generates deployment artifacts in the `./deploy` directory:
+```
+deploy/
+├── manifest.json
+├── MyApp.ApiService/
+│   └── Dockerfile
+├── MyApp.Web/
+│   └── Dockerfile
+└── infrastructure/
+    └── azure-resources.bicep
+```
+
+### Deploy with debug logging
+
+```bash
+aspire deploy --log-level Debug --include-exception-details
+```
+
+Useful for troubleshooting deployment issues.
+
+### Force a clean deployment
+
+```bash
+aspire deploy --clear-cache
+```
+
+Clears cached state and performs a fresh deployment.
+
+## Deployment Targets
+
+### Azure Container Apps
+
+Deploy to Azure Container Apps for a fully managed serverless container platform:
+
+```bash
+aspire deploy
+```
+
+Requires:
+- Azure subscription
+- Azure CLI (`az`) installed and authenticated
+- Azure Container Apps extension
+
+The deployment creates:
+- Container Apps Environment
+- Container Apps for each service
+- Azure Container Registry for images
+- Managed identities for services
+- Azure resources for integrations (Redis, PostgreSQL, etc.)
+
+### Azure Kubernetes Service (AKS)
+
+Deploy to AKS for full Kubernetes control:
+
+```bash
+aspire deploy
+```
+
+Requires:
+- Azure subscription
+- Azure CLI (`az`) installed and authenticated
+- kubectl installed
+- AKS cluster created
+
+The deployment creates:
+- Kubernetes deployments
+- Kubernetes services
+- Ingress configurations
+- ConfigMaps and Secrets
+
+### Kubernetes
+
+Deploy to any Kubernetes cluster:
+
+```bash
+aspire deploy
+```
+
+Requires:
+- kubectl configured with cluster access
+- Docker registry for images
+
+The deployment generates standard Kubernetes YAML manifests.
+
+## Deployment Manifest
+
+The `aspire deploy` command generates a deployment manifest from your AppHost. The manifest describes:
+
+- **Projects** - .NET services to containerize and deploy
+- **Containers** - Pre-built container images to deploy
+- **Resources** - Infrastructure dependencies (databases, caches, queues)
+- **Connections** - Service-to-service references and connection strings
+- **Endpoints** - HTTP/HTTPS ingress configuration
+
+You can view the manifest without deploying:
+
+```bash
+aspire publish --output-path ./manifests
+cat ./manifests/manifest.json
+```
+
+## Environment Variables
+
+Deployment injects environment variables for:
+
+- **Connection strings** - Database, cache, and message queue connections
+- **Service discovery** - URLs for referenced services
+- **Configuration** - AppHost-defined environment variables
+
+Example in deployed service:
+```bash
+ConnectionStrings__redis=redis:6379
+services__api__http__0=https://api.myapp.com
+```
+
+## Secrets Management
+
+The deployment automatically:
+
+- Extracts connection strings and secrets from your AppHost
+- Stores them securely in the target platform (Azure Key Vault, Kubernetes Secrets)
+- Injects them as environment variables at runtime
+- Never includes secrets in deployment manifests
+
+## Deployment State
+
+The CLI maintains deployment state to enable:
+
+- Incremental updates (only changed resources)
+- Resource cleanup on redeploy
+- Environment isolation
+
+State is stored in:
+```
+~/.aspire/deploy/<environment>/state.json
+```
+
+Clear state with `--clear-cache`.
+
+## Troubleshooting
+
+### Deployment fails with authentication error
+
+Ensure you're authenticated:
+
+```bash
+az login
+az account show
+```
+
+### Services fail to start
+
+Check logs:
+
+```bash
+az containerapp logs show --name myapp-api --resource-group myapp
+```
+
+Or for Kubernetes:
+
+```bash
+kubectl logs deployment/myapp-api
+```
+
+### Connection strings are missing
+
+Verify environment variables:
+
+```bash
+az containerapp show --name myapp-api --resource-group myapp --query properties.template.containers[0].env
+```
+
+### Resources aren't provisioned
+
+Check the deployment manifest:
+
+```bash
+aspire publish --output-path ./manifests
+cat ./manifests/manifest.json
+```
+
+Ensure your AppHost defines resources like:
+
+```csharp
+var redis = builder.AddRedis("cache");
+var postgres = builder.AddPostgres("postgres").AddDatabase("mydb");
+```
+
+## Limitations (Preview)
+
+Current preview limitations:
+
+- Limited to Azure and Kubernetes deployment targets
+- Some integration types may not support deployment
+- Manual cleanup of cloud resources may be required
+- Deployment state management is evolving
+
+These limitations will be addressed as the feature moves toward general availability.
+
+## See Also
+
+- [Deployment Overview](/deployment/overview) - Learn about deployment concepts
+- [Deploy to Azure](/deployment/azure) - Azure-specific deployment guide
+- [Deploy to Kubernetes](/deployment/kubernetes) - Kubernetes deployment guide
+- [CLI Overview](/cli/overview) - Complete CLI command reference

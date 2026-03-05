@@ -1,0 +1,275 @@
+---
+title: DistributedApplication & IDistributedApplicationBuilder
+description: Core API for creating and configuring .NET Aspire distributed applications
+---
+
+The `DistributedApplication` class and `IDistributedApplicationBuilder` interface are the foundation of the .NET Aspire application model. They provide the entry point for defining distributed applications and orchestrating resources.
+
+## DistributedApplication
+
+Represents a distributed application that implements `IHost` and `IAsyncDisposable`. This is the main entry point for running .NET Aspire applications.
+
+```csharp
+public class DistributedApplication : IHost, IAsyncDisposable
+```
+
+### Creating a Distributed Application
+
+Use the static factory methods to create an application builder:
+
+<CodeGroup>
+```csharp Basic Usage
+var builder = DistributedApplication.CreateBuilder(args);
+
+var postgres = builder.AddPostgres("mypostgres");
+var db = postgres.AddDatabase("inventory");
+
+builder.AddProject<Projects.InventoryService>()
+       .WithReference(db);
+
+builder.Build().Run();
+```
+
+```csharp With Options
+var options = new DistributedApplicationOptions
+{
+    Args = args,
+    DisableDashboard = false,
+    ContainerRegistryOverride = "myregistry.azurecr.io"
+};
+
+var builder = DistributedApplication.CreateBuilder(options);
+builder.Build().Run();
+```
+</CodeGroup>
+
+### Static Methods
+
+<ParamField path="CreateBuilder()" type="IDistributedApplicationBuilder">
+  Creates a new builder instance with no arguments. Use this only when not deploying with tools.
+</ParamField>
+
+<ParamField path="CreateBuilder(string[] args)" type="IDistributedApplicationBuilder">
+  Creates a builder with command-line arguments. This is the recommended approach as it enables deployment tool support.
+  
+  **Parameters:**
+  - `args` - Command-line arguments passed to the application
+</ParamField>
+
+<ParamField path="CreateBuilder(DistributedApplicationOptions)" type="IDistributedApplicationBuilder">
+  Creates a builder with full configuration options.
+  
+  **Parameters:**
+  - `options` - Configuration options including:
+    - `Args` - Command-line arguments
+    - `DisableDashboard` - Disable the Aspire dashboard
+    - `AllowUnsecuredTransport` - Allow unsecured communication
+    - `ContainerRegistryOverride` - Override the container registry
+    - `DashboardApplicationName` - Custom application name for the dashboard
+</ParamField>
+
+### Instance Properties
+
+<ResponseField name="Services" type="IServiceProvider">
+  Gets the service provider configured for the application. Use this to resolve services after the application is built.
+</ResponseField>
+
+<ResponseField name="ResourceNotifications" type="ResourceNotificationService">
+  Gets the service for monitoring and responding to resource state changes. Useful for:
+  - Database seeding
+  - Integration test readiness checks
+  - Monitoring resource health
+</ResponseField>
+
+<ResponseField name="ResourceCommands" type="ResourceCommandService">
+  Gets the service for executing resource commands programmatically or in tests.
+</ResponseField>
+
+### Methods
+
+<ParamField path="Run()" type="void">
+  Runs the application and blocks until shutdown is triggered (Ctrl-C, debugger detach, or dashboard browser close).
+</ParamField>
+
+<ParamField path="RunAsync(CancellationToken)" type="Task">
+  Runs the application asynchronously and returns a task that completes when shutdown is triggered.
+  
+  **Parameters:**
+  - `cancellationToken` - Optional cancellation token
+</ParamField>
+
+<ParamField path="StartAsync(CancellationToken)" type="Task">
+  Starts the application without blocking. Returns a task that completes when startup is finished.
+</ParamField>
+
+<ParamField path="StopAsync(CancellationToken)" type="Task">
+  Stops the application gracefully.
+</ParamField>
+
+### Resource Monitoring Example
+
+```csharp Wait for Resource Health
+var builder = DistributedApplication.CreateBuilder(args);
+var postgres = builder.AddPostgres("postgres").AddDatabase("mydb");
+var app = builder.Build();
+
+// Start the application
+await app.StartAsync();
+
+// Wait for the database to be healthy
+await app.ResourceNotifications.WaitForResourceHealthyAsync("postgres");
+
+// Seed the database
+using var scope = app.Services.CreateScope();
+var dbContext = scope.ServiceProvider.GetRequiredService<MyDbContext>();
+await dbContext.Database.EnsureCreatedAsync();
+
+// Continue running
+await app.RunAsync();
+```
+
+## IDistributedApplicationBuilder
+
+The builder interface for configuring a distributed application before it is built.
+
+```csharp
+public interface IDistributedApplicationBuilder
+```
+
+### Properties
+
+<ResponseField name="Environment" type="IHostEnvironment">
+  Gets the hosting environment information (Development, Production, etc.).
+</ResponseField>
+
+<ResponseField name="Configuration" type="ConfigurationManager">
+  Gets the configuration manager for accessing application configuration.
+</ResponseField>
+
+<ResponseField name="Services" type="IServiceCollection">
+  Gets the service collection for registering dependency injection services.
+</ResponseField>
+
+<ResponseField name="Resources" type="IResourceCollection">
+  Gets the collection of resources defined in the application.
+</ResponseField>
+
+<ResponseField name="Eventing" type="IDistributedApplicationEventing">
+  Gets the eventing system for subscribing to application lifecycle events.
+</ResponseField>
+
+<ResponseField name="ExecutionContext" type="DistributedApplicationExecutionContext">
+  Gets the execution context indicating whether the app is in Run, Publish, or Inspect mode.
+</ResponseField>
+
+<ResponseField name="AppHostDirectory" type="string">
+  Gets the directory path of the app host project.
+</ResponseField>
+
+### Methods
+
+<ParamField path="AddResource<T>(T)" type="IResourceBuilder<T>">
+  Adds a resource to the application and returns a builder for further configuration.
+  
+  **Parameters:**
+  - `resource` - The resource instance to add
+  
+  **Returns:** A resource builder for chaining configuration methods
+  
+  **Throws:** `DistributedApplicationException` if a resource with the same name already exists
+</ParamField>
+
+<ParamField path="CreateResourceBuilder<T>(T)" type="IResourceBuilder<T>">
+  Creates a resource builder for an existing resource without adding it to the application.
+  
+  **Parameters:**
+  - `resource` - The resource instance
+  
+  **Returns:** A resource builder for configuration
+</ParamField>
+
+<ParamField path="Build()" type="DistributedApplication">
+  Builds the configured application and returns a `DistributedApplication` instance ready to run.
+</ParamField>
+
+### Configuration Example
+
+```csharp Service Registration
+var builder = DistributedApplication.CreateBuilder(args);
+
+// Add custom services
+builder.Services.AddSingleton<IMyService, MyService>();
+
+// Subscribe to events
+builder.Eventing.Subscribe<BeforeStartEvent>(async (e, ct) => 
+{
+    Console.WriteLine("Application starting...");
+});
+
+// Check execution mode
+if (builder.ExecutionContext.IsPublishMode)
+{
+    Console.WriteLine("Generating manifest for deployment");
+}
+
+var app = builder.Build();
+await app.RunAsync();
+```
+
+## Execution Modes
+
+Aspire applications run in different modes depending on how they're launched:
+
+<AccordionGroup>
+  <Accordion title="Run Mode">
+    The normal mode when running the application locally. The app host orchestrates all resources and runs until shutdown.
+    
+    ```csharp
+    if (builder.ExecutionContext.IsRunMode)
+    {
+        // Add development-only resources
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Publish Mode">
+    Activated when generating manifests for deployment tools. The app runs briefly to generate configuration.
+    
+    ```csharp
+    if (builder.ExecutionContext.IsPublishMode)
+    {
+        // Configure for production deployment
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Inspect Mode">
+    Used by tooling to inspect the application model without running resources.
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Pass Command-Line Args" icon="terminal">
+    Always pass `args` to `CreateBuilder()` to enable deployment tool support and proper configuration.
+  </Card>
+  
+  <Card title="Dispose Properly in Tests" icon="flask">
+    Call `DisposeAsync()` on the application in test scenarios to clean up file watchers and resources.
+  </Card>
+  
+  <Card title="Use Resource Notifications" icon="bell">
+    Monitor resource health before performing operations like database seeding or integration tests.
+  </Card>
+  
+  <Card title="Configure Services Early" icon="gear">
+    Register custom services in `builder.Services` before calling `Build()`.
+  </Card>
+</CardGroup>
+
+## Related APIs
+
+- [IResourceBuilder](/api/resource-builder) - Building and configuring individual resources
+- [IResource](/api/resource-interfaces) - Resource interfaces and contracts
+- [Hosting Extensions](/api/hosting-extensions) - Extension methods for adding resources

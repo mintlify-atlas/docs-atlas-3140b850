@@ -1,0 +1,390 @@
+---
+title: Service Discovery
+description: How service discovery works in .NET Aspire applications
+---
+
+Service discovery in .NET Aspire enables services to locate and communicate with each other without hardcoded hostnames or ports. Aspire handles the complexity of endpoint resolution, environment variable injection, and network topology automatically.
+
+## How Service Discovery Works
+
+When you use `.WithReference()` in your AppHost, Aspire automatically configures service discovery between resources:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var catalogService = builder.AddProject<Projects.CatalogService>("catalogservice");
+var basketService = builder.AddProject<Projects.BasketService>("basketservice");
+
+var frontend = builder.AddProject<Projects.MyFrontend>("frontend")
+                      .WithReference(catalogService)
+                      .WithReference(basketService);
+```
+
+This configuration:
+1. Injects service discovery environment variables into the frontend
+2. Configures the frontend to resolve service endpoints at runtime
+3. Handles different network topologies (containers, host processes)
+
+## IResourceWithServiceDiscovery Interface
+
+Resources that support service discovery implement the `IResourceWithServiceDiscovery` interface:
+
+```csharp
+public interface IResourceWithServiceDiscovery : IResourceWithEndpoints
+{
+}
+```
+
+Built-in resources that support service discovery:
+- `ProjectResource` (.NET projects)
+- `ContainerResource` (Docker containers)
+- `ExecutableResource` (standalone executables)
+- Specialized resources (Redis, PostgreSQL, RabbitMQ, etc.)
+
+## Environment Variable Injection
+
+When you reference a service, Aspire injects structured environment variables following a standard naming pattern:
+
+```csharp
+var redis = builder.AddRedis("cache");
+
+var myService = builder.AddProject<Projects.MyService>("myservice")
+                       .WithReference(redis);
+```
+
+The service receives these environment variables:
+
+```bash
+# Service discovery configuration
+services__cache__http__0=http://localhost:6379
+services__cache__https__0=https://localhost:6380
+
+# Individual connection properties (for databases)
+CACHE_HOST=localhost
+CACHE_PORT=6379
+CACHE_URI=redis://localhost:6379
+```
+
+## Consuming Service Discovery
+
+In your .NET service projects, consume service discovery by adding service defaults:
+
+```csharp Program.cs
+using Microsoft.Extensions.Hosting;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+// Add service defaults (includes service discovery)
+builder.AddServiceDefaults();
+
+// Configure HTTP client with service discovery
+builder.Services.AddHttpClient<CatalogServiceClient>(client => 
+{
+    client.BaseAddress = new("https+http://catalogservice");
+});
+
+var app = builder.Build();
+app.Run();
+```
+
+### ServiceDefaults Implementation
+
+The `AddServiceDefaults()` extension configures service discovery automatically:
+
+```csharp Extensions.cs (ServiceDefaults project)
+public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder) 
+    where TBuilder : IHostApplicationBuilder
+{
+    builder.ConfigureOpenTelemetry();
+    builder.AddDefaultHealthChecks();
+    
+    // Enable service discovery
+    builder.Services.AddServiceDiscovery();
+    
+    // Configure HTTP clients to use service discovery
+    builder.Services.ConfigureHttpClientDefaults(http =>
+    {
+        http.AddStandardResilienceHandler();
+        http.AddServiceDiscovery();  // Auto-resolve service names
+    });
+    
+    return builder;
+}
+```
+
+## Service Name Resolution
+
+Aspire uses a URI scheme pattern for service discovery:
+
+```csharp
+// Scheme pattern: protocol+http://service-name
+client.BaseAddress = new("https+http://catalogservice");
+```
+
+| Scheme | Meaning |
+|--------|----------|
+| `http://servicename` | HTTP only |
+| `https://servicename` | HTTPS only |
+| `https+http://servicename` | Prefer HTTPS, fallback to HTTP |
+
+At runtime, the service discovery resolver:
+1. Looks up the service name in configuration
+2. Resolves to actual endpoint (localhost:port, container name, etc.)
+3. Selects the appropriate protocol
+
+## Context-Based Endpoint Resolution
+
+Aspire automatically resolves endpoints differently based on the execution context:
+
+### Container-to-Container Communication
+
+When both source and target are containers:
+
+```csharp
+var redis = builder.AddContainer("redis", "redis")
+                   .WithEndpoint(targetPort: 6379);
+
+var worker = builder.AddContainer("worker", "myworker")
+                    .WithReference(redis);
+```
+
+Resolved endpoint: `redis:6379` (uses Docker container network)
+
+### Container-to-Project Communication
+
+When a container references a .NET project:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api");
+
+var sidecar = builder.AddContainer("sidecar", "monitoring")
+                     .WithReference(api);
+```
+
+Resolved endpoint: `host.docker.internal:5000` (container accesses host network)
+
+### Project-to-Container Communication
+
+When a .NET project references a container:
+
+```csharp
+var redis = builder.AddContainer("redis", "redis");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(redis);
+```
+
+Resolved endpoint: `localhost:6379` (project accesses container's mapped port)
+
+### Resolution Rules Summary
+
+| Source | Target | Resolution |
+|--------|--------|------------|
+| Container | Container | `resource-name:port` |
+| Container | Project/Executable | `host.docker.internal:port` |
+| Project/Executable | Container | `localhost:mapped-port` |
+| Project/Executable | Project/Executable | `localhost:port` |
+
+## Database Connection Strings
+
+Database resources implement `IResourceWithConnectionString` and provide structured connection information:
+
+```csharp
+var postgres = builder.AddPostgres("postgres")
+                      .AddDatabase("catalogdb");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(postgres);
+```
+
+Injected environment variables:
+
+```bash
+CONNECTIONSTRINGS__CATALOGDB=Host=localhost;Port=5432;Database=catalogdb;Username=postgres
+CATALOGDB_HOST=localhost
+CATALOGDB_PORT=5432
+```
+
+### Consuming Connection Strings
+
+Access connection strings in your application:
+
+```csharp
+builder.Services.AddNpgsqlDbContext<CatalogDbContext>("catalogdb");
+```
+
+The framework automatically resolves the connection string from the `ConnectionStrings:catalogdb` configuration key.
+
+## Endpoint References
+
+Get direct references to specific endpoints:
+
+```csharp
+var redis = builder.AddContainer("redis", "redis")
+                   .WithEndpoint(name: "tcp", targetPort: 6379);
+
+var endpoint = redis.GetEndpoint("tcp");
+
+builder.AddProject<Projects.Worker>("worker")
+       .WithEnvironment("REDIS_URL", endpoint);
+```
+
+### Endpoint Properties
+
+Access specific endpoint properties using `EndpointReference`:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api");
+var httpEndpoint = api.GetEndpoint("http");
+
+// Use individual properties
+builder.AddContainer("proxy", "nginx")
+       .WithEnvironment(ctx => 
+       {
+           ctx.EnvironmentVariables["API_HOST"] = httpEndpoint.Property(EndpointProperty.Host);
+           ctx.EnvironmentVariables["API_PORT"] = httpEndpoint.Property(EndpointProperty.Port);
+       });
+```
+
+Available endpoint properties:
+- `Url` - Full URL (scheme://host:port)
+- `Host` - Hostname or IP
+- `Port` - Allocated port number
+- `TargetPort` - Container internal port
+- `Scheme` - Protocol (http, https, tcp)
+- `HostAndPort` - Combined host:port
+
+## Named References
+
+Provide custom names for service references:
+
+```csharp
+var primaryDb = builder.AddPostgres("postgres-primary")
+                       .AddDatabase("db");
+
+var secondaryDb = builder.AddPostgres("postgres-secondary")
+                         .AddDatabase("db");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(primaryDb, "primary")
+                 .WithReference(secondaryDb, "secondary");
+```
+
+This generates distinct environment variables:
+
+```bash
+CONNECTIONSTRINGS__PRIMARY=Host=localhost;Port=5432;...
+CONNECTIONSTRINGS__SECONDARY=Host=localhost;Port=5433;...
+```
+
+## Service Discovery in Practice
+
+### Example: Calling Another Service
+
+Here's a complete example from the TestShop application:
+
+```csharp CatalogServiceClient.cs
+public class CatalogServiceClient(HttpClient httpClient)
+{
+    public async Task<List<CatalogItem>> GetCatalogItemsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        // HttpClient.BaseAddress is automatically resolved via service discovery
+        var response = await httpClient.GetAsync("/api/catalog", cancellationToken);
+        response.EnsureSuccessStatusCode();
+        
+        return await response.Content.ReadFromJsonAsync<List<CatalogItem>>(cancellationToken) 
+               ?? [];
+    }
+}
+```
+
+```csharp Program.cs
+var builder = WebApplication.CreateBuilder(args);
+builder.AddServiceDefaults();
+
+// Configure with service discovery
+builder.Services.AddHttpClient<CatalogServiceClient>(client => 
+{
+    client.BaseAddress = new("https+http://catalogservice");
+});
+
+var app = builder.Build();
+app.Run();
+```
+
+### AppHost Configuration
+
+```csharp AppHost.cs
+var catalogService = builder.AddProject<Projects.CatalogService>("catalogservice");
+
+var frontend = builder.AddProject<Projects.Frontend>("frontend")
+                      .WithReference(catalogService);  // Enables service discovery
+```
+
+## Run Mode vs. Publish Mode
+
+Service discovery behaves differently in local development vs. deployed environments:
+
+### Run Mode (Local Development)
+
+- Endpoints resolved to `localhost` with dynamic ports
+- Environment variables contain concrete values
+- Dashboard shows live endpoint information
+
+### Publish Mode (Deployment)
+
+- Endpoints represented as expressions: `{catalogservice.bindings.http.url}`
+- Deployment infrastructure resolves expressions at runtime
+- Supports Kubernetes DNS, Azure service endpoints, etc.
+
+```csharp
+// Deployment manifest (Kubernetes example)
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalogservice
+spec:
+  selector:
+    app: catalogservice
+  ports:
+  - port: 80
+    targetPort: 8080
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always use service defaults">
+    Every service project should call `builder.AddServiceDefaults()` to enable service discovery, telemetry, and health checks.
+  </Accordion>
+  
+  <Accordion title="Prefer service names over hardcoded URLs">
+    Use service discovery URIs (`https+http://servicename`) instead of hardcoding endpoints in configuration.
+  </Accordion>
+  
+  <Accordion title="Use named references for multiple instances">
+    When referencing multiple instances of the same resource type, provide distinct names to avoid conflicts.
+  </Accordion>
+  
+  <Accordion title="Test endpoint resolution">
+    Use the dashboard to verify that endpoints resolve correctly for your network topology.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Application Model" icon="diagram-project" href="/concepts/app-model">
+    Learn about resources and the app model
+  </Card>
+  <Card title="Configuration Guide" icon="gear" href="/guides/configuration">
+    Configure services and environment variables
+  </Card>
+  <Card title="Dashboard" icon="chart-line" href="/concepts/dashboard">
+    Monitor service endpoints in the dashboard
+  </Card>
+  <Card title="Dependencies" icon="link" href="/guides/dependencies">
+    Manage resource dependencies and startup order
+  </Card>
+</CardGroup>

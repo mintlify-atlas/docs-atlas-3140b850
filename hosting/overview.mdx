@@ -1,0 +1,142 @@
+---
+title: Hosting Integrations Overview
+description: Learn about .NET Aspire hosting integrations for databases, messaging, and cloud services
+---
+
+.NET Aspire hosting integrations provide extension methods for adding popular services and resources to your distributed application. These integrations handle container orchestration, configuration, and connection management automatically.
+
+## What are Hosting Integrations?
+
+Hosting integrations extend the `IDistributedApplicationBuilder` with methods that add resources to your application model. Each integration:
+
+- Manages container lifecycle for local development
+- Configures connection strings and environment variables
+- Provides health checks for dependent services
+- Supports cloud deployment scenarios
+
+## Available Integrations
+
+### Databases
+
+.NET Aspire includes hosting integrations for popular databases:
+
+- [PostgreSQL](/hosting/postgres) - Open-source relational database
+- [SQL Server](/hosting/sql-server) - Microsoft's enterprise relational database
+- [Redis](/hosting/redis) - In-memory data store for caching
+- [MongoDB](/hosting/mongodb) - Document-oriented NoSQL database
+
+### Messaging
+
+Message queue and streaming integrations:
+
+- [RabbitMQ](/hosting/rabbitmq) - Message broker
+- [Apache Kafka](/hosting/kafka) - Distributed event streaming platform
+
+### Azure Services
+
+.NET Aspire provides first-class support for Azure services:
+
+- [Azure Overview](/hosting/azure-overview) - Core Azure integration capabilities
+- [Azure Cosmos DB](/hosting/azure-cosmos-db) - Globally distributed NoSQL database
+- [Azure Storage](/hosting/azure-storage) - Blob, queue, and table storage
+- [Azure Service Bus](/hosting/azure-service-bus) - Enterprise messaging service
+
+## How to Use Hosting Integrations
+
+### Installation
+
+Install the hosting integration package for the service you want to use:
+
+```bash
+dotnet add package Aspire.Hosting.PostgreSQL
+```
+
+### Add to AppHost
+
+In your AppHost project, use the `AddXxx` extension methods:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var postgres = builder.AddPostgres("postgres")
+                      .AddDatabase("mydb");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(postgres);
+
+builder.Build().Run();
+```
+
+### Reference from Services
+
+When you use `WithReference`, connection information is automatically passed to the dependent service:
+
+```csharp
+// In your service's Program.cs
+builder.AddNpgsqlDbContext<MyDbContext>("mydb");
+```
+
+## Common Patterns
+
+### Adding Resources with Configuration
+
+Many integrations support configuration options:
+
+```csharp
+var redis = builder.AddRedis("cache", port: 6379);
+var sqlserver = builder.AddSqlServer("sql", password: myPassword, port: 1433);
+```
+
+### Using Volumes for Persistence
+
+Add volumes to persist data across container restarts:
+
+```csharp
+var postgres = builder.AddPostgres("postgres")
+                      .WithDataVolume();
+```
+
+### Adding Multiple Databases
+
+Create multiple databases on a single server resource:
+
+```csharp
+var postgres = builder.AddPostgres("postgres");
+var db1 = postgres.AddDatabase("database1");
+var db2 = postgres.AddDatabase("database2");
+```
+
+### Health Checks
+
+Hosting integrations include built-in health checks. Use `WaitFor` to ensure dependencies are ready:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(postgres)
+                 .WaitFor(postgres);
+```
+
+## Connection Properties
+
+Each hosting integration exposes connection properties as environment variables. The naming convention is `[RESOURCE]_[PROPERTY]`.
+
+For example, a resource named `db` with a `Uri` property becomes the environment variable `DB_URI`.
+
+See individual integration pages for specific connection properties.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="PostgreSQL" icon="database" href="/hosting/postgres">
+    Add PostgreSQL database to your application
+  </Card>
+  <Card title="Redis" icon="server" href="/hosting/redis">
+    Add Redis caching to your application
+  </Card>
+  <Card title="Azure Services" icon="cloud" href="/hosting/azure-overview">
+    Integrate with Azure cloud services
+  </Card>
+  <Card title="RabbitMQ" icon="messages" href="/hosting/rabbitmq">
+    Add message queuing with RabbitMQ
+  </Card>
+</CardGroup>

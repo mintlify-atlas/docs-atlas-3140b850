@@ -1,0 +1,265 @@
+---
+title: aspire new
+description: Create a new .NET Aspire application from a starter template.
+---
+
+# aspire new
+
+Create a new app from an Aspire starter template.
+
+## Usage
+
+```bash
+aspire new [template] [options]
+aspire new [options]  # Interactive template selection
+```
+
+## Description
+
+The `aspire new` command creates a new Aspire application from a starter template. Templates include pre-configured AppHost projects, service projects, and integration examples.
+
+## Templates
+
+The following templates are available:
+
+- **aspire-starter** - A starter template with a web frontend and API backend
+- **aspire-apphost** - An empty AppHost project
+- **aspire-servicedefaults** - A ServiceDefaults project for shared configuration
+- **aspire-apphost-singlefile** - A single-file AppHost (no project file)
+
+## Options
+
+<ParamField path="--name" type="string">
+  The name of the project to create
+  
+  Example: `--name MyAspireApp`
+  
+  If not specified, you'll be prompted to enter a name.
+</ParamField>
+
+<ParamField path="--output" type="string">
+  The output path for the project
+  
+  Example: `--output ./projects/MyApp`
+  
+  If not specified, defaults to a new directory in the current location.
+</ParamField>
+
+<ParamField path="--source" type="string">
+  The NuGet source to use for project templates
+  
+  Example: `--source https://api.nuget.org/v3/index.json`
+</ParamField>
+
+<ParamField path="--version" type="string">
+  The version of the project templates to use
+  
+  Example: `--version 10.0.0`
+  
+  If not specified, uses the latest version from the selected channel.
+</ParamField>
+
+<ParamField path="--channel" type="string">
+  Channel to use for templates: `stable`, `daily`, or `staging` (when enabled)
+  
+  Example: `--channel daily`
+  
+  If not specified, uses the configured channel or defaults to `stable`.
+</ParamField>
+
+<ParamField path="--language" type="string">
+  The programming language for the AppHost: `csharp` or `typescript`
+  
+  Example: `--language typescript`
+  
+  If not specified, you'll be prompted to choose when multiple languages are available.
+</ParamField>
+
+## Examples
+
+### Create a new starter app
+
+```bash
+aspire new aspire-starter --name MyApp
+cd MyApp/MyApp.AppHost
+dotnet run
+```
+
+This creates a complete starter application with:
+- An AppHost project for orchestration
+- A web frontend project
+- An API service project
+- A ServiceDefaults project for shared configuration
+
+### Create with interactive prompts
+
+```bash
+aspire new
+```
+
+You'll be prompted to:
+1. Select a template
+2. Choose a language (if applicable)
+3. Enter a project name
+4. Specify an output directory
+5. Select a template version
+
+### Create an empty AppHost
+
+```bash
+aspire new aspire-apphost --name MyOrchestrator
+```
+
+This creates just an AppHost project without any service projects.
+
+### Use a specific version
+
+```bash
+aspire new aspire-starter --name MyApp --version 10.0.0-preview.1.25067.1
+```
+
+### Use the daily channel
+
+```bash
+aspire new aspire-starter --name MyApp --channel daily
+```
+
+### Create a TypeScript AppHost
+
+```bash
+aspire new aspire-starter --name MyApp --language typescript
+```
+
+## Interactive Prompts
+
+### Template Selection
+
+If you don't specify a template, you'll see:
+
+```
+Select a template:
+  > Aspire Starter Application
+    Aspire Empty AppHost
+    Aspire ServiceDefaults Project
+```
+
+### Language Selection
+
+For templates that support multiple languages:
+
+```
+Which language would you like to use?
+  > C#
+    TypeScript (Node.js)
+```
+
+### Project Name
+
+If `--name` is not provided:
+
+```
+Enter the project name: MyAspireApp
+```
+
+Project names must:
+- Not contain path separators (`/` or `\`)
+- Be between 1-254 characters
+- Not be empty or whitespace only
+
+### Output Path
+
+If `--output` is not provided:
+
+```
+Enter the output path: ./MyAspireApp
+```
+
+### Template Version
+
+When multiple versions are available:
+
+```
+# Which version of Aspire do you want to use?
+
+Multiple versions of Aspire are available. If you want to use
+the latest stable version choose 10.0.0.
+
+Select a template version:
+  > 10.0.0 (nuget.org)
+    10.0.0-preview.1.25067.1 (nuget.org)
+    daily
+```
+
+## Template Structure
+
+### aspire-starter
+
+Creates a solution with:
+
+```
+MyApp/
+├── MyApp.sln
+├── MyApp.AppHost/
+│   ├── MyApp.AppHost.csproj
+│   └── Program.cs
+├── MyApp.ServiceDefaults/
+│   ├── MyApp.ServiceDefaults.csproj
+│   └── Extensions.cs
+├── MyApp.Web/
+│   ├── MyApp.Web.csproj
+│   └── Program.cs
+└── MyApp.ApiService/
+    ├── MyApp.ApiService.csproj
+    └── Program.cs
+```
+
+The AppHost is pre-configured to orchestrate both the Web and ApiService projects.
+
+### aspire-apphost
+
+Creates a minimal AppHost project:
+
+```
+MyApp/
+└── MyApp.AppHost/
+    ├── MyApp.AppHost.csproj
+    ├── Program.cs
+    └── appsettings.json
+```
+
+## Configuration
+
+Set a default channel to avoid specifying it each time:
+
+```bash
+aspire config set channel daily
+aspire new aspire-starter --name MyApp  # Uses daily channel
+```
+
+Set a default language:
+
+```bash
+aspire config set language typescript
+aspire new aspire-starter --name MyApp  # Creates TypeScript AppHost
+```
+
+## Template Installation
+
+Templates are automatically installed when you run `aspire new`. The CLI:
+
+1. Resolves the template version based on `--version`, `--channel`, or configured defaults
+2. Downloads the `Aspire.ProjectTemplates` package from NuGet
+3. Installs the templates to your local template cache
+4. Creates the project from the template
+
+You can also manually install templates:
+
+```bash
+dotnet new install Aspire.ProjectTemplates::10.0.0
+```
+
+## See Also
+
+- [aspire init](/cli/init) - Initialize Aspire in an existing solution
+- [aspire run](/cli/run) - Run your new AppHost
+- [aspire add](/cli/add) - Add integrations to your AppHost

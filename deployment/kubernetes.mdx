@@ -1,0 +1,570 @@
+---
+title: Deploying to Kubernetes
+description: Deploy .NET Aspire applications to Kubernetes clusters using Helm charts and kubectl
+---
+
+.NET Aspire applications can be deployed to any Kubernetes cluster, including Azure Kubernetes Service (AKS), Amazon EKS, Google GKE, and on-premises clusters.
+
+## Prerequisites
+
+- Kubernetes cluster (1.19+)
+- `kubectl` installed and configured
+- Helm 3.x installed
+- Container registry accessible from your cluster
+- .NET Aspire application with AppHost project
+- Aspire CLI installed (`dotnet tool install -g aspire`)
+
+## Kubernetes Deployment Model
+
+Aspire generates Kubernetes manifests from your application model, creating:
+
+- **Deployments** - For container workloads
+- **Services** - For service discovery and load balancing
+- **ConfigMaps** - For configuration data
+- **Secrets** - For sensitive configuration
+- **Ingress** - For external HTTP/HTTPS access (optional)
+
+## Setting Up Kubernetes Environment
+
+Add a Kubernetes environment to your AppHost:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+// Add Kubernetes environment
+var k8s = builder.AddKubernetesEnvironment("k8s");
+
+// Add your services
+var cache = builder.AddRedis("cache");
+
+var apiService = builder.AddProject<Projects.ApiService>("apiservice")
+    .WithReference(cache);
+
+builder.Build().Run();
+```
+
+<Note>
+The Kubernetes environment resource is implemented in `src/Aspire.Hosting.Kubernetes/KubernetesEnvironmentResource.cs` and automatically generates Helm charts from your app model.
+</Note>
+
+## Generating Kubernetes Manifests
+
+Use the Aspire CLI to generate deployment artifacts:
+
+```bash
+# Generate Kubernetes manifests
+aspire publish --output-path ./k8s-artifacts
+```
+
+This creates:
+
+```
+k8s-artifacts/
+├── aspire-manifest.json          # Aspire manifest
+├── Chart.yaml                     # Helm chart metadata
+├── values.yaml                    # Default values
+└── templates/
+    ├── apiservice-deployment.yaml # Deployment for API service
+    ├── apiservice-service.yaml    # Service for API
+    ├── cache-deployment.yaml      # Redis deployment
+    └── cache-service.yaml         # Redis service
+```
+
+### Helm Chart Generation
+
+The Kubernetes environment automatically generates a Helm chart with the application name:
+
+```csharp
+var k8s = builder.AddKubernetesEnvironment("k8s");
+
+// The Helm chart name is derived from the application name
+// Located in: src/Aspire.Hosting.Kubernetes/KubernetesEnvironmentExtensions.cs:40
+resource.HelmChartName = builder.Environment.ApplicationName.ToHelmChartName();
+```
+
+## Deploying to Kubernetes
+
+### Using Helm
+
+```bash
+# Install the Helm chart
+helm install myapp ./k8s-artifacts
+
+# Upgrade an existing deployment
+helm upgrade myapp ./k8s-artifacts
+
+# Uninstall
+helm uninstall myapp
+```
+
+### Using kubectl
+
+```bash
+# Apply all manifests
+kubectl apply -f ./k8s-artifacts/templates/
+
+# Check deployment status
+kubectl get deployments
+kubectl get pods
+kubectl get services
+
+# Delete resources
+kubectl delete -f ./k8s-artifacts/templates/
+```
+
+## Customizing Kubernetes Resources
+
+### Configuring Deployments
+
+Customize Kubernetes deployments for your resources:
+
+```csharp
+builder.AddProject<Projects.ApiService>("apiservice")
+    .WithReplicas(3)  // Set replica count
+    .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Production");
+```
+
+### Service Configuration
+
+Configure Kubernetes services:
+
+```csharp
+builder.AddProject<Projects.ApiService>("apiservice")
+    .WithHttpEndpoint(port: 8080, name: "http")
+    .WithHttpsEndpoint(port: 8443, name: "https");
+```
+
+This generates a Kubernetes Service:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: apiservice
+spec:
+  selector:
+    app: apiservice
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: https
+    port: 8443
+    targetPort: 8443
+    protocol: TCP
+  type: ClusterIP
+```
+
+### External Endpoints
+
+Expose services externally:
+
+```csharp
+builder.AddProject<Projects.WebApp>("webapp")
+    .WithExternalHttpEndpoints();
+```
+
+This creates an Ingress resource for external access.
+
+## Container Images
+
+### Building and Pushing Images
+
+Before deploying, build and push container images:
+
+```bash
+# For .NET projects, Aspire generates Dockerfiles
+# Build and push manually or use CI/CD
+
+docker build -t myregistry.azurecr.io/apiservice:latest ./ApiService
+docker push myregistry.azurecr.io/apiservice:latest
+```
+
+### Using Private Registries
+
+Configure Kubernetes to use a private registry:
+
+```bash
+# Create a docker-registry secret
+kubectl create secret docker-registry regcred \
+  --docker-server=myregistry.azurecr.io \
+  --docker-username=<username> \
+  --docker-password=<password>
+```
+
+Reference the secret in your deployment:
+
+```yaml
+spec:
+  imagePullSecrets:
+  - name: regcred
+  containers:
+  - name: apiservice
+    image: myregistry.azurecr.io/apiservice:latest
+```
+
+## Configuration Management
+
+### ConfigMaps
+
+Aspire generates ConfigMaps for non-sensitive configuration:
+
+```csharp
+builder.AddProject<Projects.ApiService>("apiservice")
+    .WithEnvironment("LOG_LEVEL", "Information")
+    .WithEnvironment("FEATURE_FLAGS", "EnableNewUI=true");
+```
+
+Generated ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apiservice-config
+data:
+  LOG_LEVEL: "Information"
+  FEATURE_FLAGS: "EnableNewUI=true"
+```
+
+### Secrets
+
+Use Kubernetes Secrets for sensitive data:
+
+```csharp
+var password = builder.AddParameter("db-password", secret: true);
+
+var db = builder.AddPostgres("postgres")
+    .WithEnvironment("POSTGRES_PASSWORD", password);
+
+builder.AddProject<Projects.ApiService>("apiservice")
+    .WithReference(db);
+```
+
+Generated Secret:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+type: Opaque
+data:
+  POSTGRES_PASSWORD: <base64-encoded-password>
+```
+
+## Resource Scaling
+
+### Horizontal Pod Autoscaling
+
+Configure HPA for automatic scaling:
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: apiservice-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: apiservice
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+```
+
+### Resource Limits
+
+Set CPU and memory limits:
+
+```csharp
+builder.AddProject<Projects.ApiService>("apiservice")
+    .WithAnnotation(new ResourceLimitsAnnotation
+    {
+        CpuLimit = "1000m",
+        MemoryLimit = "512Mi",
+        CpuRequest = "100m",
+        MemoryRequest = "128Mi"
+    });
+```
+
+## Service Discovery
+
+Kubernetes DNS provides automatic service discovery:
+
+```csharp
+// Reference another service
+var cache = builder.AddRedis("cache");
+
+builder.AddProject<Projects.ApiService>("apiservice")
+    .WithReference(cache);  // Resolves to: cache:6379
+```
+
+In the container, the connection string resolves to the Kubernetes service DNS name.
+
+## Persistent Storage
+
+### Volumes for Databases
+
+```csharp
+var postgres = builder.AddPostgres("postgres")
+    .WithDataVolume();  // Creates a PersistentVolumeClaim
+
+builder.AddProject<Projects.DataService>("dataservice")
+    .WithReference(postgres);
+```
+
+Generated PersistentVolumeClaim:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### Bind Mounts
+
+```csharp
+builder.AddContainer("nginx", "nginx")
+    .WithBindMount("./static", "/usr/share/nginx/html", isReadOnly: true);
+```
+
+## Health Checks
+
+Aspire configures Kubernetes health probes:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apiservice
+spec:
+  template:
+    spec:
+      containers:
+      - name: apiservice
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+```
+
+## Deploying to Cloud Kubernetes Services
+
+### Azure Kubernetes Service (AKS)
+
+```bash
+# Create AKS cluster
+az aks create --resource-group myResourceGroup \
+  --name myAKSCluster \
+  --node-count 3 \
+  --enable-addons monitoring
+
+# Get credentials
+az aks get-credentials --resource-group myResourceGroup --name myAKSCluster
+
+# Deploy
+helm install myapp ./k8s-artifacts
+```
+
+### Amazon EKS
+
+```bash
+# Create EKS cluster
+eksctl create cluster --name myCluster --region us-west-2
+
+# Update kubeconfig
+aws eks update-kubeconfig --region us-west-2 --name myCluster
+
+# Deploy
+helm install myapp ./k8s-artifacts
+```
+
+### Google GKE
+
+```bash
+# Create GKE cluster
+gcloud container clusters create myCluster --num-nodes=3
+
+# Get credentials
+gcloud container clusters get-credentials myCluster
+
+# Deploy
+helm install myapp ./k8s-artifacts
+```
+
+## Observability
+
+### Logging
+
+Aspire applications emit logs to stdout/stderr, which Kubernetes captures:
+
+```bash
+# View logs
+kubectl logs deployment/apiservice
+
+# Follow logs
+kubectl logs -f deployment/apiservice
+
+# Logs from all pods
+kubectl logs -l app=apiservice
+```
+
+### Metrics
+
+Integrate with Prometheus for metrics:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: apiservice
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+```
+
+### Distributed Tracing
+
+Configure OpenTelemetry export to a trace collector:
+
+```csharp
+builder.AddProject<Projects.ApiService>("apiservice")
+    .WithEnvironment("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317");
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Namespaces">
+    Organize resources by environment:
+
+    ```bash
+    kubectl create namespace production
+    helm install myapp ./k8s-artifacts --namespace production
+    ```
+  </Accordion>
+
+  <Accordion title="Configure Resource Limits">
+    Always set resource requests and limits:
+
+    ```yaml
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "1000m"
+    ```
+  </Accordion>
+
+  <Accordion title="Use Liveness and Readiness Probes">
+    Ensure Kubernetes can manage your application lifecycle:
+
+    ```csharp
+    builder.AddProject<Projects.ApiService>("apiservice")
+        .WithHealthCheck("/health");
+    ```
+  </Accordion>
+
+  <Accordion title="Secure Secrets">
+    Use external secret managers like Azure Key Vault or AWS Secrets Manager:
+
+    ```bash
+    # Use External Secrets Operator
+    kubectl apply -f external-secret.yaml
+    ```
+  </Accordion>
+
+  <Accordion title="Version Images">
+    Always tag images with versions, not `latest`:
+
+    ```bash
+    docker build -t myregistry.azurecr.io/apiservice:v1.2.3 .
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<Tabs>
+  <Tab title="Pod Not Starting">
+    Check pod status and events:
+
+    ```bash
+    kubectl describe pod <pod-name>
+    kubectl get events --sort-by='.lastTimestamp'
+    ```
+  </Tab>
+
+  <Tab title="Image Pull Errors">
+    Verify image exists and credentials are correct:
+
+    ```bash
+    kubectl describe pod <pod-name> | grep -A 5 "Failed"
+    
+    # Check secret
+    kubectl get secret regcred -o yaml
+    ```
+  </Tab>
+
+  <Tab title="Service Not Accessible">
+    Check service and endpoints:
+
+    ```bash
+    kubectl get svc
+    kubectl get endpoints
+    kubectl port-forward service/apiservice 8080:8080
+    ```
+  </Tab>
+
+  <Tab title="Container Crashes">
+    View logs for crash details:
+
+    ```bash
+    kubectl logs <pod-name> --previous
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Deploy to Azure" icon="microsoft" href="/deployment/azure">
+    Learn about deploying to Azure Container Apps
+  </Card>
+  <Card title="App Model" icon="diagram-project" href="/concepts/app-model">
+    Understand the Aspire application model
+  </Card>
+  <Card title="Service Discovery" icon="network-wired" href="/concepts/service-discovery">
+    Learn how service discovery works
+  </Card>
+  <Card title="Hosting Resources" icon="server" href="/hosting/overview">
+    Explore available hosting integrations
+  </Card>
+</CardGroup>

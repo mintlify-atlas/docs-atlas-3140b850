@@ -1,122 +1,179 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": ".NET Aspire",
+  "theme": "aspen",
+  "mode": "custom",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#7052db",
+    "light": "#ac9aec",
+    "dark": "#d8c1fa"
   },
   "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo.svg",
+    "dark": "/logo.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/dotnet/aspire"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/dotnet/aspire"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/app-model",
+              "concepts/service-discovery",
+              "concepts/dashboard",
+              "concepts/telemetry"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Building Apps",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "guides/hosting-basics",
+              "guides/resources",
+              "guides/dependencies",
+              "guides/configuration",
+              "guides/environment-variables"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Deployment",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "deployment/overview",
+              "deployment/azure",
+              "deployment/kubernetes"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "CLI Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "CLI Commands",
             "pages": [
-              "api-reference/introduction"
+              "cli/overview",
+              "cli/init",
+              "cli/new",
+              "cli/run",
+              "cli/add",
+              "cli/deploy"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Hosting Integrations",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "hosting/overview"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Databases",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "hosting/postgres",
+              "hosting/sql-server",
+              "hosting/redis",
+              "hosting/mongodb"
+            ]
+          },
+          {
+            "group": "Messaging",
+            "pages": [
+              "hosting/rabbitmq",
+              "hosting/kafka"
+            ]
+          },
+          {
+            "group": "Azure",
+            "pages": [
+              "hosting/azure-overview",
+              "hosting/azure-cosmos-db",
+              "hosting/azure-storage",
+              "hosting/azure-service-bus"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Client Integrations",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "components/overview"
+            ]
+          },
+          {
+            "group": "Databases",
+            "pages": [
+              "components/npgsql",
+              "components/sql-client",
+              "components/stackexchange-redis",
+              "components/mongodb"
+            ]
+          },
+          {
+            "group": "Messaging",
+            "pages": [
+              "components/rabbitmq",
+              "components/kafka"
+            ]
+          },
+          {
+            "group": "Azure",
+            "pages": [
+              "components/azure-cosmos",
+              "components/azure-storage",
+              "components/azure-service-bus"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/distributed-application",
+              "api/resource-builder",
+              "api/resource-interfaces"
+            ]
+          },
+          {
+            "group": "Hosting",
+            "pages": [
+              "api/hosting-extensions",
+              "api/container-resource",
+              "api/project-resource"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

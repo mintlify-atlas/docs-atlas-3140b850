@@ -1,0 +1,219 @@
+---
+title: Apache Kafka Hosting Integration
+description: Add Apache Kafka streaming resources to your .NET Aspire application
+---
+
+The .NET Aspire Kafka hosting integration provides extension methods for adding Apache Kafka resources to your distributed application for event streaming.
+
+## Installation
+
+Install the Kafka hosting integration package in your AppHost project:
+
+```bash
+dotnet add package Aspire.Hosting.Kafka
+```
+
+## Usage
+
+### Add Kafka Resource
+
+In your AppHost project (`AppHost.cs`), add a Kafka resource:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var kafka = builder.AddKafka("messaging");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(kafka);
+
+builder.Build().Run();
+```
+
+### Consume in Service
+
+In your service project, reference the Kafka resource using the client integration:
+
+```bash
+dotnet add package Aspire.Confluent.Kafka
+```
+
+Then in `Program.cs`:
+
+```csharp
+builder.AddKafkaProducer<string, string>("messaging");
+// or
+builder.AddKafkaConsumer<string, string>("messaging", consumerBuilder => {
+    consumerBuilder.Config.GroupId = "my-consumer-group";
+});
+```
+
+## API Reference
+
+### AddKafka
+
+Adds a Kafka server resource to the application model. A container is used for local development.
+
+```csharp
+public static IResourceBuilder<KafkaServerResource> AddKafka(
+    this IDistributedApplicationBuilder builder,
+    string name,
+    int? port = null)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+- `port` - The host port for Kafka. If null, a random port will be assigned.
+
+#### Returns
+
+A reference to the `IResourceBuilder<KafkaServerResource>`.
+
+## Configuration Examples
+
+### Custom Port
+
+```csharp
+var kafka = builder.AddKafka("messaging", port: 9092);
+```
+
+### Data Persistence with Volumes
+
+```csharp
+var kafka = builder.AddKafka("messaging")
+                   .WithDataVolume();
+```
+
+### Kafka UI Management Tool
+
+Add a Kafka UI container for managing topics, consumers, and messages:
+
+```csharp
+var kafka = builder.AddKafka("messaging")
+                   .WithKafkaUI();
+```
+
+This adds a Kafka UI container that provides a web-based interface for monitoring and managing your Kafka cluster.
+
+### Named Volumes
+
+```csharp
+var kafka = builder.AddKafka("messaging")
+                   .WithDataVolume("myapp-kafka-data");
+```
+
+### Bind Mounts
+
+```csharp
+var kafka = builder.AddKafka("messaging")
+                   .WithDataBindMount("./kafka-data");
+```
+
+## Connection Properties
+
+When you reference a Kafka resource using `WithReference`, the following connection properties are made available to the consuming project.
+
+### Kafka Server
+
+| Property Name | Description |
+|---------------|-------------|
+| `Host` | The host-facing Kafka listener hostname or IP address |
+| `Port` | The host-facing Kafka listener port |
+
+### Environment Variables
+
+Aspire exposes each property as an environment variable named `[RESOURCE]_[PROPERTY]`. For instance:
+
+- The `Host` property of a resource called `messaging` becomes `MESSAGING_HOST`
+- The `Port` property becomes `MESSAGING_PORT`
+
+## Health Checks
+
+The Kafka hosting integration includes built-in health checks. When a resource is referenced as a dependency using `WaitFor`, the dependent resource will wait until the Kafka resource is able to service requests.
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(kafka)
+                 .WaitFor(kafka);
+```
+
+## Common Patterns
+
+### Producer Service
+
+```csharp
+var kafka = builder.AddKafka("messaging");
+
+var producer = builder.AddProject<Projects.EventProducer>("producer")
+                      .WithReference(kafka);
+```
+
+In the producer service:
+
+```csharp
+builder.AddKafkaProducer<string, OrderCreated>("messaging");
+
+// In your service code:
+public class OrderService(IProducer<string, OrderCreated> producer)
+{
+    public async Task CreateOrder(Order order)
+    {
+        // Business logic...
+        
+        await producer.ProduceAsync("orders", new Message<string, OrderCreated>
+        {
+            Key = order.Id,
+            Value = new OrderCreated { OrderId = order.Id, CustomerId = order.CustomerId }
+        });
+    }
+}
+```
+
+### Consumer Service
+
+```csharp
+var kafka = builder.AddKafka("messaging");
+
+var consumer = builder.AddProject<Projects.EventConsumer>("consumer")
+                      .WithReference(kafka);
+```
+
+In the consumer service:
+
+```csharp
+builder.AddKafkaConsumer<string, OrderCreated>("messaging", consumerBuilder => {
+    consumerBuilder.Config.GroupId = "order-processor";
+    consumerBuilder.Config.AutoOffsetReset = AutoOffsetReset.Earliest;
+});
+```
+
+### Event-Driven Microservices
+
+```csharp
+var kafka = builder.AddKafka("messaging")
+                   .WithDataVolume();
+
+var orderService = builder.AddProject<Projects.OrderService>("orders")
+                          .WithReference(kafka);
+
+var inventoryService = builder.AddProject<Projects.InventoryService>("inventory")
+                              .WithReference(kafka);
+
+var shippingService = builder.AddProject<Projects.ShippingService>("shipping")
+                             .WithReference(kafka);
+```
+
+## Container Details
+
+The Kafka hosting integration uses the Apache Kafka container and includes a ZooKeeper container for coordination (when using older Kafka versions) or runs in KRaft mode for newer versions.
+
+<Note>
+The Kafka container requires more resources than typical database containers. Ensure your development environment has sufficient memory allocated to Docker.
+</Note>
+
+## Additional Resources
+
+- [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
+- [Confluent Kafka .NET Client](https://docs.confluent.io/kafka-clients/dotnet/current/overview.html)
+- [Aspire Kafka Client Integration](/components/kafka)

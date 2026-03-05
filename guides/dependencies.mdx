@@ -1,0 +1,427 @@
+---
+title: Dependencies and References
+description: Learn how to wire dependencies between resources using WithReference
+---
+
+Distributed applications are composed of interconnected services that need to communicate with each other. .NET Aspire makes it simple to wire these dependencies using the `WithReference` method and the resource graph.
+
+## The Resource Graph
+
+When you call `WithReference`, Aspire creates a dependency relationship between resources, forming a directed acyclic graph (DAG). This graph determines:
+
+- **Startup order** - Dependencies start before dependents
+- **Service discovery** - Connection information flows from dependencies to dependents
+- **Environment injection** - Endpoints and connection strings are automatically injected
+
+```csharp
+var cache = builder.AddRedis("cache");
+var db = builder.AddPostgres("postgres").AddDatabase("catalogdb");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(cache)      // api depends on cache
+                 .WithReference(db);        // api depends on db
+```
+
+In this example:
+1. `cache` and `postgres` start first (no dependencies)
+2. `catalogdb` starts after `postgres` is ready
+3. `api` starts after both `cache` and `catalogdb` are ready
+
+## WithReference Basics
+
+The `WithReference` method connects a resource to its dependencies:
+
+```csharp
+var source = builder.AddRedis("cache");
+var target = builder.AddProject<Projects.Api>("api")
+                    .WithReference(source);
+```
+
+<Steps>
+
+### Dependency is ensured to start first
+
+The source resource (`cache`) will start before the target resource (`api`).
+
+### Connection information is injected
+
+The target resource receives environment variables with connection information for the source.
+
+### Service discovery is configured
+
+The target can discover and connect to the source using its name.
+
+</Steps>
+
+## Connection String References
+
+For resources that provide connection strings (databases, message queues, etc.), `WithReference` injects a connection string environment variable:
+
+```csharp
+var db = builder.AddPostgres("postgres")
+                .AddDatabase("catalogdb");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(db);
+```
+
+This automatically injects:
+
+```bash
+ConnectionStrings__catalogdb=Host=localhost;Port=5432;Database=catalogdb;Username=postgres;Password=...
+```
+
+Your .NET project can then access it using configuration:
+
+```csharp
+var connectionString = builder.Configuration.GetConnectionString("catalogdb");
+```
+
+### Custom Connection String Names
+
+Override the connection string name:
+
+```csharp
+var db = builder.AddPostgres("postgres")
+                .AddDatabase("catalogdb");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(db, connectionName: "CatalogDatabase");
+```
+
+Now the environment variable becomes:
+
+```bash
+ConnectionStrings__CatalogDatabase=...
+```
+
+### Optional References
+
+Make a reference optional if the dependency might not be available:
+
+```csharp
+var cache = builder.AddRedis("cache");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(cache, optional: true);
+```
+
+The application will start even if `cache` is unavailable, but the connection string will be empty.
+
+## Service Discovery References
+
+For resources with HTTP endpoints (projects, containers with exposed ports), `WithReference` configures service discovery:
+
+```csharp
+var backend = builder.AddProject<Projects.Backend>("backend")
+                     .WithHttpEndpoint(port: 8080, name: "http");
+
+var frontend = builder.AddProject<Projects.Frontend>("frontend")
+                      .WithReference(backend);
+```
+
+This injects **two types** of environment variables:
+
+### 1. Service Discovery Format
+
+```bash
+services__backend__http__0=http://localhost:8080
+```
+
+Used by .NET's service discovery to resolve `backend` as a service name:
+
+```csharp
+var client = httpClientFactory.CreateClient();
+var response = await client.GetAsync("http://backend/api/catalog");
+```
+
+### 2. Direct Endpoint Format
+
+```bash
+BACKEND_HTTP=http://localhost:8080
+```
+
+Used for direct access:
+
+```csharp
+var backendUrl = builder.Configuration["BACKEND_HTTP"];
+```
+
+### Custom Service Names
+
+Control the service name used for discovery:
+
+```csharp
+var backend = builder.AddProject<Projects.Backend>("backend-api");
+
+var frontend = builder.AddProject<Projects.Frontend>("frontend")
+                      .WithReference(backend, name: "backend");
+```
+
+Now the service is discoverable as `backend` instead of `backend-api`:
+
+```csharp
+await client.GetAsync("http://backend/api/catalog"); // Uses 'backend'
+```
+
+## Reference by Endpoint
+
+Reference a specific endpoint when a resource has multiple endpoints:
+
+```csharp
+var backend = builder.AddProject<Projects.Backend>("backend")
+                     .WithHttpEndpoint(port: 8080, name: "http")
+                     .WithHttpEndpoint(port: 8443, name: "https");
+
+var frontend = builder.AddProject<Projects.Frontend>("frontend")
+                      .WithReference(backend.GetEndpoint("https"));
+```
+
+Only the `https` endpoint is injected into `frontend`:
+
+```bash
+services__backend__https__0=https://localhost:8443
+BACKEND_HTTPS=https://localhost:8443
+```
+
+## Reference by URI
+
+Reference external services by URI:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference("payment-gateway", new Uri("https://api.payment.com/"));
+```
+
+This injects:
+
+```bash
+services__payment-gateway__default__0=https://api.payment.com/
+PAYMENT_GATEWAY=https://api.payment.com/
+```
+
+<Note>
+  The URI must be absolute and end with a trailing slash.
+</Note>
+
+## Controlling What Gets Injected
+
+By default, `WithReference` injects connection strings, endpoints, and service discovery information. You can customize this with `WithReferenceEnvironment`:
+
+```csharp
+var cache = builder.AddRedis("cache");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReferenceEnvironment(ReferenceEnvironmentInjectionFlags.ServiceDiscovery)
+                 .WithReference(cache);
+```
+
+Available flags:
+
+- `ConnectionString` - Inject connection strings
+- `Endpoints` - Inject direct endpoint variables (e.g., `CACHE_TCP`)
+- `ServiceDiscovery` - Inject service discovery format (e.g., `services__cache__tcp__0`)
+- `ConnectionProperties` - Inject individual connection properties
+- `All` - Inject everything (default)
+
+Combine flags:
+
+```csharp
+var flags = ReferenceEnvironmentInjectionFlags.ServiceDiscovery | 
+            ReferenceEnvironmentInjectionFlags.ConnectionString;
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReferenceEnvironment(flags)
+                 .WithReference(cache);
+```
+
+## Multiple Dependencies
+
+Chain multiple `WithReference` calls:
+
+```csharp
+var cache = builder.AddRedis("cache");
+var db = builder.AddPostgres("postgres").AddDatabase("catalogdb");
+var queue = builder.AddRabbitMQ("messaging");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(cache)
+                 .WithReference(db)
+                 .WithReference(queue);
+```
+
+All dependencies will start before `api`, and all connection information is injected.
+
+## Wait Behavior
+
+Control what happens when a dependency fails to start:
+
+<Tabs>
+  <Tab title="Default Behavior">
+    By default, resources wait for dependencies to become healthy:
+    
+    ```csharp
+    var db = builder.AddPostgres("postgres");
+    
+    var api = builder.AddProject<Projects.Api>("api")
+                     .WithReference(db);
+    ```
+    
+    The `api` waits for `postgres` to be healthy before starting.
+  </Tab>
+  
+  <Tab title="Continue on Failure">
+    Start the resource even if dependency fails:
+    
+    ```csharp
+    var cache = builder.AddRedis("cache")
+                       .WithWaitBehavior(WaitBehavior.WaitOnResourceUnavailable);
+    
+    var api = builder.AddProject<Projects.Api>("api")
+                     .WithReference(cache);
+    ```
+    
+    The `api` will start even if `cache` is unavailable.
+  </Tab>
+  
+  <Tab title="Stop on Failure">
+    Stop the entire application if dependency fails:
+    
+    ```csharp
+    var db = builder.AddPostgres("postgres")
+                    .WithWaitBehavior(WaitBehavior.StopOnResourceUnavailable);
+    
+    var api = builder.AddProject<Projects.Api>("api")
+                     .WithReference(db);
+    ```
+    
+    If `postgres` fails to start, the entire application stops.
+  </Tab>
+</Tabs>
+
+## Dependency Chains
+
+You can create chains of dependencies:
+
+```csharp
+// Database depends on migration tool
+var migrator = builder.AddProject<Projects.Migrator>("migrator");
+
+var db = builder.AddPostgres("postgres")
+                .AddDatabase("catalogdb")
+                .WaitFor(migrator);  // Wait for migrator to complete
+
+// API depends on database
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(db);
+```
+
+Execution order:
+1. `postgres` starts
+2. `migrator` runs migrations
+3. `catalogdb` waits for `migrator` to complete
+4. `api` starts after `catalogdb` is ready
+
+## External Services
+
+Reference services not managed by Aspire:
+
+```csharp
+var externalApi = builder.AddExternalService("payment-api", 
+    new Uri("https://api.payment.com/"));
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(externalApi);
+```
+
+Or use a parameter for dynamic configuration:
+
+```csharp
+var apiUrl = builder.AddParameter("payment-api-url");
+var externalApi = builder.AddExternalService("payment-api", apiUrl);
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(externalApi);
+```
+
+## Debugging Dependencies
+
+View the resource graph in the Aspire Dashboard:
+
+1. Start your application
+2. Open the dashboard
+3. Click on a resource
+4. View the **Dependencies** tab
+
+The dashboard shows:
+- Which resources this resource depends on
+- Which resources depend on this resource
+- The startup order
+
+## Common Patterns
+
+<AccordionGroup>
+  <Accordion title="Backend + Database">
+    ```csharp
+    var db = builder.AddPostgres("postgres")
+                    .AddDatabase("appdb");
+    
+    var api = builder.AddProject<Projects.Api>("api")
+                     .WithReference(db);
+    ```
+  </Accordion>
+  
+  <Accordion title="Frontend + Backend">
+    ```csharp
+    var api = builder.AddProject<Projects.Api>("api");
+    
+    var web = builder.AddProject<Projects.Web>("web")
+                     .WithReference(api);
+    ```
+  </Accordion>
+  
+  <Accordion title="Microservices with Shared Resources">
+    ```csharp
+    var cache = builder.AddRedis("cache");
+    var queue = builder.AddRabbitMQ("messaging");
+    
+    var catalog = builder.AddProject<Projects.CatalogService>("catalog")
+                         .WithReference(cache)
+                         .WithReference(queue);
+    
+    var orders = builder.AddProject<Projects.OrderService>("orders")
+                        .WithReference(cache)
+                        .WithReference(queue);
+    
+    var frontend = builder.AddProject<Projects.Frontend>("frontend")
+                          .WithReference(catalog)
+                          .WithReference(orders);
+    ```
+  </Accordion>
+  
+  <Accordion title="Database with Migrations">
+    ```csharp
+    var db = builder.AddPostgres("postgres")
+                    .AddDatabase("appdb");
+    
+    var migrator = builder.AddProject<Projects.Migrator>("migrator")
+                          .WithReference(db);
+    
+    db.WaitFor(migrator);
+    
+    var api = builder.AddProject<Projects.Api>("api")
+                     .WithReference(db);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Learn about configuration management
+  </Card>
+  <Card title="Environment Variables" icon="list" href="/guides/environment-variables">
+    Control environment variable injection
+  </Card>
+</CardGroup>

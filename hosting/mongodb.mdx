@@ -1,0 +1,195 @@
+---
+title: MongoDB Hosting Integration
+description: Add MongoDB database resources to your .NET Aspire application
+---
+
+The .NET Aspire MongoDB hosting integration provides extension methods for adding MongoDB server and database resources to your distributed application.
+
+## Installation
+
+Install the MongoDB hosting integration package in your AppHost project:
+
+```bash
+dotnet add package Aspire.Hosting.MongoDB
+```
+
+## Usage
+
+### Add MongoDB Server and Database
+
+In your AppHost project (`AppHost.cs`), add a MongoDB server and database:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var mongo = builder.AddMongoDB("mongo")
+                   .AddDatabase("mydb");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(mongo);
+
+builder.Build().Run();
+```
+
+### Consume in Service
+
+In your service project, reference the database using the client integration:
+
+```bash
+dotnet add package Aspire.MongoDB.Driver
+```
+
+Then in `Program.cs`:
+
+```csharp
+builder.AddMongoDBClient("mydb");
+```
+
+## API Reference
+
+### AddMongoDB
+
+Adds a MongoDB server resource to the application model. A container is used for local development.
+
+```csharp
+public static IResourceBuilder<MongoDBServerResource> AddMongoDB(
+    this IDistributedApplicationBuilder builder,
+    string name,
+    int? port = null,
+    IResourceBuilder<ParameterResource>? userName = null,
+    IResourceBuilder<ParameterResource>? password = null)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+- `port` - The host port to bind the underlying container to. If null, a random port will be assigned.
+- `userName` - The parameter used to provide the user name for the MongoDB resource. If `null` a default value will be used.
+- `password` - The parameter used to provide the administrator password for the MongoDB resource. If `null` a random password will be generated.
+
+#### Returns
+
+A reference to the `IResourceBuilder<MongoDBServerResource>`.
+
+### AddDatabase
+
+Adds a MongoDB database to the application model.
+
+```csharp
+public static IResourceBuilder<MongoDBDatabaseResource> AddDatabase(
+    this IResourceBuilder<MongoDBServerResource> builder,
+    string name,
+    string? databaseName = null)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+- `databaseName` - The MongoDB database name. If not provided, defaults to the same value as `name`.
+
+## Configuration Examples
+
+### Custom Port
+
+```csharp
+var mongo = builder.AddMongoDB("mongo", port: 27017);
+```
+
+### Custom Credentials
+
+```csharp
+var username = builder.AddParameter("mongo-user");
+var password = builder.AddParameter("mongo-password", secret: true);
+var mongo = builder.AddMongoDB("mongo", userName: username, password: password);
+```
+
+### Data Persistence with Volumes
+
+```csharp
+var mongo = builder.AddMongoDB("mongo")
+                   .WithDataVolume();
+```
+
+### Multiple Databases
+
+```csharp
+var mongo = builder.AddMongoDB("mongo");
+var catalogDb = mongo.AddDatabase("catalog");
+var inventoryDb = mongo.AddDatabase("inventory");
+
+var catalogService = builder.AddProject<Projects.CatalogService>("catalog")
+                            .WithReference(catalogDb);
+
+var inventoryService = builder.AddProject<Projects.InventoryService>("inventory")
+                              .WithReference(inventoryDb);
+```
+
+### Mongo Express Management Tool
+
+```csharp
+var mongo = builder.AddMongoDB("mongo")
+                   .WithMongoExpress();
+```
+
+This adds a Mongo Express container that provides a web-based UI for managing your MongoDB instance.
+
+### Named Volumes
+
+```csharp
+var mongo = builder.AddMongoDB("mongo")
+                   .WithDataVolume("myapp-mongo-data");
+```
+
+### Bind Mounts
+
+```csharp
+var mongo = builder.AddMongoDB("mongo")
+                   .WithDataBindMount("./mongo-data");
+```
+
+## Connection Properties
+
+When you reference a MongoDB resource using `WithReference`, the following connection properties are made available to the consuming project.
+
+### MongoDB Server
+
+| Property Name | Description |
+|---------------|-------------|
+| `Host` | The hostname or IP address of the MongoDB server |
+| `Port` | The port number the MongoDB server is listening on |
+| `Username` | The username for authentication |
+| `Password` | The password for authentication (available when a password parameter is configured) |
+| `AuthenticationDatabase` | The authentication database (available when a password parameter is configured) |
+| `AuthenticationMechanism` | The authentication mechanism (available when a password parameter is configured) |
+| `Uri` | The connection URI, with the format `mongodb://{Username}:{Password}@{Host}:{Port}/?authSource={AuthenticationDatabase}&authMechanism={AuthenticationMechanism}` |
+
+### MongoDB Database
+
+The MongoDB database resource combines the server properties above and adds:
+
+| Property Name | Description |
+|---------------|-------------|
+| `DatabaseName` | The MongoDB database name |
+
+### Environment Variables
+
+Aspire exposes each property as an environment variable named `[RESOURCE]_[PROPERTY]`. For instance:
+
+- The `Uri` property of a resource called `mydb` becomes `MYDB_URI`
+- The `DatabaseName` property becomes `MYDB_DATABASENAME`
+
+## Health Checks
+
+The MongoDB hosting integration includes built-in health checks. When a resource is referenced as a dependency using `WaitFor`, the dependent resource will wait until the MongoDB resource is able to service requests.
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(mongo)
+                 .WaitFor(mongo);
+```
+
+## Additional Resources
+
+- [MongoDB Official Documentation](https://www.mongodb.com/docs/)
+- [MongoDB .NET Driver](https://www.mongodb.com/docs/drivers/csharp/current/)
+- [Aspire MongoDB Client Integration](/components/mongodb)

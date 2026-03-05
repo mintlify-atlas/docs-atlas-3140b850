@@ -1,0 +1,522 @@
+---
+title: Installation
+description: Install .NET Aspire on Windows, macOS, or Linux
+---
+
+This guide will walk you through installing .NET Aspire on your machine, including all prerequisites and optional tools.
+
+## Prerequisites
+
+.NET Aspire requires the following software to be installed on your system:
+
+### .NET SDK
+
+<Steps>
+  <Step title="Install .NET 9.0 or Later">
+    Aspire requires .NET 9.0 SDK or later.
+    
+    Download and install from [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download)
+  </Step>
+  
+  <Step title="Verify Installation">
+    Check your .NET version:
+    
+    ```bash
+    dotnet --version
+    ```
+    
+    You should see version 9.0.0 or higher.
+  </Step>
+</Steps>
+
+<Note>
+If you have an older version of .NET, you can install multiple versions side-by-side. The Aspire CLI will use the correct version automatically.
+</Note>
+
+### Container Runtime
+
+Aspire uses containers to run infrastructure services like databases, caches, and message queues during development.
+
+<Tabs>
+  <Tab title="Docker Desktop">
+    Docker Desktop is the recommended choice for most users.
+    
+    **Windows**
+    1. Download from [docs.docker.com/desktop/install/windows-install](https://docs.docker.com/desktop/install/windows-install/)
+    2. Run the installer
+    3. Restart your computer if prompted
+    4. Start Docker Desktop from the Start menu
+    
+    **macOS**
+    1. Download from [docs.docker.com/desktop/install/mac-install](https://docs.docker.com/desktop/install/mac-install/)
+    2. Drag Docker.app to your Applications folder
+    3. Launch Docker from Applications
+    
+    **Linux**
+    1. Follow the installation guide at [docs.docker.com/desktop/install/linux-install](https://docs.docker.com/desktop/install/linux-install/)
+    2. Start Docker Desktop
+    
+    **Verify Installation**
+    ```bash
+    docker --version
+    docker ps
+    ```
+  </Tab>
+  
+  <Tab title="Podman">
+    Podman is an alternative container runtime that works well with Aspire.
+    
+    **Windows**
+    1. Follow instructions at [podman.io/docs/installation#windows](https://podman.io/docs/installation#windows)
+    2. Start Podman Desktop
+    
+    **macOS**
+    ```bash
+    brew install podman
+    podman machine init
+    podman machine start
+    ```
+    
+    **Linux**
+    
+    On Ubuntu/Debian:
+    ```bash
+    sudo apt-get update
+    sudo apt-get install podman
+    ```
+    
+    On Fedora:
+    ```bash
+    sudo dnf install podman
+    ```
+    
+    **Verify Installation**
+    ```bash
+    podman --version
+    podman ps
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+Make sure your container runtime is **running** before you start an Aspire application. If it's not running, you'll get errors when Aspire tries to start containers.
+</Warning>
+
+## Install Aspire CLI
+
+The Aspire CLI is the primary tool for creating, running, and managing Aspire applications.
+
+### Stable Release (Recommended)
+
+Install the latest stable version of the Aspire CLI:
+
+<CodeGroup>
+```powershell Windows
+irm https://aspire.dev/install.ps1 | iex
+```
+
+```bash macOS/Linux
+curl -sSL https://aspire.dev/install.sh | bash
+```
+</CodeGroup>
+
+### Daily Builds (Preview Features)
+
+If you want to try the latest features before they're released, you can install daily builds:
+
+<CodeGroup>
+```powershell Windows
+iex "& { $(irm https://aspire.dev/install.ps1) } -Quality dev"
+```
+
+```bash macOS/Linux
+curl -sSL https://aspire.dev/install.sh | bash -s -- -q dev
+```
+</CodeGroup>
+
+<Warning>
+Daily builds are not supported for production use. They may contain bugs or breaking changes.
+</Warning>
+
+### Verify Installation
+
+Check that the CLI is installed correctly:
+
+```bash
+aspire --version
+```
+
+You should see the version number, such as:
+
+```
+9.4.1
+```
+
+<Note>
+The Aspire CLI is installed to `~/.aspire/bin` on macOS/Linux or `%USERPROFILE%\.aspire\bin` on Windows. The installer automatically adds this to your PATH.
+
+If the `aspire` command isn't found, restart your terminal or add the directory to your PATH manually.
+</Note>
+
+## Optional: Install VS Code Extension
+
+The Aspire VS Code extension provides a better development experience with IntelliSense, debugging support, and integrated terminal commands.
+
+### Install Extension with CLI
+
+The easiest way is to install both the CLI and extension together:
+
+<CodeGroup>
+```powershell Windows
+iex "& { $(irm https://aspire.dev/install.ps1) } -InstallExtension"
+```
+
+```bash macOS/Linux
+curl -sSL https://aspire.dev/install.sh | bash -s -- --install-extension
+```
+</CodeGroup>
+
+### Install Extension from VS Code
+
+Alternatively, install directly from VS Code:
+
+1. Open VS Code
+2. Go to Extensions (Ctrl+Shift+X or Cmd+Shift+X)
+3. Search for "Aspire"
+4. Click **Install** on the .NET Aspire extension
+
+<Note>
+If you use VS Code Insiders, add the `-UseInsiders` (PowerShell) or `--use-insiders` (bash) flag when installing with the CLI.
+</Note>
+
+## Optional: Configure Visual Studio
+
+If you use Visual Studio, ensure you have the right version and workloads.
+
+### Requirements
+
+- **Visual Studio 2022 version 17.14** or later
+- **ASP.NET and web development** workload
+
+### Install Visual Studio
+
+<Steps>
+  <Step title="Download Visual Studio">
+    Get Visual Studio 2022 from [visualstudio.microsoft.com/vs](https://visualstudio.microsoft.com/vs)
+  </Step>
+  
+  <Step title="Select Workloads">
+    During installation, select:
+    - ✅ **ASP.NET and web development**
+    - ✅ **.NET desktop development** (optional, for desktop apps)
+  </Step>
+  
+  <Step title="Launch and Verify">
+    After installation, create a new Aspire project:
+    
+    1. File → New → Project
+    2. Search for "Aspire"
+    3. Select **.NET Aspire Starter Application**
+    4. Click **Create**
+  </Step>
+</Steps>
+
+<Note>
+Visual Studio has built-in support for Aspire. You don't need to install a separate extension.
+</Note>
+
+## Platform-Specific Notes
+
+### Windows
+
+- **PowerShell Execution Policy**: If you get an error about execution policy when running the install script, run:
+  ```powershell
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+  ```
+
+- **WSL2**: If you're using WSL2, you can install Aspire inside WSL and use Docker Desktop for Windows with WSL2 integration enabled.
+
+### macOS
+
+- **Apple Silicon (M1/M2/M3)**: The Aspire CLI works natively on Apple Silicon. Make sure you have the ARM64 version of .NET installed.
+
+- **Rosetta**: You don't need Rosetta for Aspire itself, but some container images may require it.
+
+### Linux
+
+- **Alpine Linux**: Aspire supports Alpine Linux, but requires additional setup for gRPC tooling. See the [Alpine Linux section](#alpine-linux-setup) below.
+
+- **Architecture**: Aspire primarily supports x64/amd64. ARM64 support varies by integration.
+
+### Alpine Linux Setup
+
+<Accordion title="Special setup for Alpine Linux users">
+  If you're building on Alpine Linux, you need musl-compatible gRPC tooling:
+  
+  1. Install the gRPC plugins:
+     ```bash
+     apk add --no-cache grpc-plugins
+     ```
+  
+  2. Set environment variables to use the musl-compatible binaries:
+     ```bash
+     export PROTOBUF_PROTOC=/usr/bin/protoc
+     export GRPC_PROTOC_PLUGIN=/usr/bin/grpc_csharp_plugin
+     ```
+  
+  3. Add these to your shell profile (e.g., `~/.bashrc` or `~/.zshrc`) to make them permanent.
+  
+  <Warning>
+  Alpine Linux support is not part of the official CI test suite. For production workloads, consider using a Debian-based distribution.
+  </Warning>
+</Accordion>
+
+## Verify Complete Installation
+
+Let's verify everything is installed correctly by creating a test project:
+
+<Steps>
+  <Step title="Create a Test Project">
+    ```bash
+    aspire new
+    ```
+    
+    When prompted:
+    - Project name: `test-app`
+    - Output path: `./test-app`
+    - Template version: `stable`
+  </Step>
+  
+  <Step title="Navigate to Project">
+    ```bash
+    cd test-app
+    ```
+  </Step>
+  
+  <Step title="Run the Application">
+    ```bash
+    aspire run
+    ```
+    
+    You should see:
+    - Build output
+    - Dashboard URL
+    - Resources starting up
+    - Your browser opening to the dashboard
+  </Step>
+  
+  <Step title="Verify Dashboard">
+    In the dashboard, you should see:
+    - 3 resources: `cache`, `apiservice`, `webfrontend`
+    - All resources showing as "Running"
+    - Green status indicators
+  </Step>
+  
+  <Step title="Clean Up">
+    Stop the app (Ctrl+C in terminal) and optionally delete the test project:
+    
+    ```bash
+    cd ..
+    rm -rf test-app
+    ```
+  </Step>
+</Steps>
+
+<Note>
+If all steps completed successfully, your installation is complete! You're ready to start building Aspire applications.
+</Note>
+
+## Update Aspire
+
+### Update CLI
+
+To update to the latest version of the Aspire CLI, run the installation command again:
+
+<CodeGroup>
+```powershell Windows
+irm https://aspire.dev/install.ps1 | iex
+```
+
+```bash macOS/Linux
+curl -sSL https://aspire.dev/install.sh | bash
+```
+</CodeGroup>
+
+The installer will detect the existing installation and update it.
+
+### Update Existing Projects
+
+To update an existing project to use the latest Aspire packages:
+
+```bash
+aspire update
+```
+
+This command:
+1. Updates all Aspire NuGet packages to the latest version
+2. Updates the NuGet.config if needed
+3. Restores packages
+
+<Note>
+Run `aspire update` from the root directory of your Aspire solution.
+</Note>
+
+## Uninstall Aspire
+
+If you need to uninstall Aspire:
+
+### Uninstall CLI
+
+<Tabs>
+  <Tab title="Windows">
+    Delete the Aspire directory and remove from PATH:
+    
+    ```powershell
+    Remove-Item -Recurse -Force "$env:USERPROFILE\.aspire"
+    ```
+    
+    Then remove `%USERPROFILE%\.aspire\bin` from your PATH environment variable.
+  </Tab>
+  
+  <Tab title="macOS/Linux">
+    Delete the Aspire directory:
+    
+    ```bash
+    rm -rf ~/.aspire
+    ```
+    
+    Remove from PATH by editing `~/.bashrc`, `~/.zshrc`, or equivalent:
+    ```bash
+    # Remove this line:
+    export PATH="$HOME/.aspire/bin:$PATH"
+    ```
+  </Tab>
+</Tabs>
+
+### Uninstall VS Code Extension
+
+1. Open VS Code
+2. Go to Extensions (Ctrl+Shift+X or Cmd+Shift+X)
+3. Find the .NET Aspire extension
+4. Click **Uninstall**
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="'aspire' command not found">
+    The CLI installation directory is not in your PATH.
+    
+    **On Windows**, add to PATH:
+    1. Open System Properties → Environment Variables
+    2. Under User Variables, edit PATH
+    3. Add `%USERPROFILE%\.aspire\bin`
+    4. Restart your terminal
+    
+    **On macOS/Linux**, add to your shell profile:
+    ```bash
+    echo 'export PATH="$HOME/.aspire/bin:$PATH"' >> ~/.bashrc
+    source ~/.bashrc
+    ```
+  </Accordion>
+  
+  <Accordion title="Docker daemon not running">
+    When you run `aspire run`, you get an error about Docker not being available.
+    
+    **Solution:**
+    1. Start Docker Desktop (Windows/Mac) or the Docker service (Linux)
+    2. Wait for it to finish starting (you'll see the icon in the system tray)
+    3. Verify with `docker ps`
+    4. Run `aspire run` again
+  </Accordion>
+  
+  <Accordion title="Permission denied on Linux">
+    You get a permission error when running Docker commands.
+    
+    **Solution:** Add your user to the docker group:
+    ```bash
+    sudo usermod -aG docker $USER
+    newgrp docker
+    ```
+    
+    Or use Podman, which doesn't require root privileges.
+  </Accordion>
+  
+  <Accordion title="Port conflicts">
+    The dashboard or services can't start because ports are already in use.
+    
+    **Solution:** Aspire will automatically try different ports. If you need to free up ports:
+    
+    **Find what's using a port:**
+    ```bash
+    # On Windows
+    netstat -ano | findstr :18888
+    
+    # On macOS/Linux
+    lsof -i :18888
+    ```
+    
+    **Kill the process or specify different ports in your AppHost:**
+    ```csharp
+    builder.AddProject<Projects.Web>("web")
+        .WithHttpEndpoint(port: 8080);
+    ```
+  </Accordion>
+  
+  <Accordion title="NuGet restore failures">
+    Package restore fails with errors about missing feeds or authentication.
+    
+    **Solution:**
+    1. Make sure you have internet connectivity
+    2. Clear NuGet caches:
+       ```bash
+       dotnet nuget locals all --clear
+       ```
+    3. Try restoring again:
+       ```bash
+       dotnet restore
+       ```
+  </Accordion>
+  
+  <Accordion title="Visual Studio can't find Aspire templates">
+    When creating a new project in Visual Studio, Aspire templates don't appear.
+    
+    **Solution:**
+    1. Make sure you have Visual Studio 2022 17.14 or later
+    2. Update to the latest version via Help → Check for Updates
+    3. Repair Visual Studio installation if needed
+    4. Restart Visual Studio
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+Now that Aspire is installed, you're ready to build your first application!
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create and run your first Aspire app in 5 minutes
+  </Card>
+  
+  <Card title="Core Concepts" icon="book" href="/concepts/app-model">
+    Learn about the app model and how Aspire works
+  </Card>
+  
+  <Card title="CLI Reference" icon="terminal" href="/cli/overview">
+    Explore all CLI commands and options
+  </Card>
+  
+  <Card title="Integrations" icon="puzzle-piece" href="/hosting/overview">
+    Discover available integrations for databases, messaging, and more
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- **Official Documentation**: [aspire.dev/docs](https://aspire.dev/docs)
+- **Sample Applications**: [github.com/dotnet/aspire-samples](https://github.com/dotnet/aspire-samples)
+- **Discord Community**: Join the .NET Aspire Discord for help and discussions
+- **GitHub Repository**: [github.com/dotnet/aspire](https://github.com/dotnet/aspire)
+
+<Note>
+If you encounter any issues not covered here, check the [GitHub Issues](https://github.com/dotnet/aspire/issues) or ask in the community Discord.
+</Note>

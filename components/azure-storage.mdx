@@ -1,0 +1,552 @@
+---
+title: "Azure Storage Components"
+description: "Connect to Azure Blob Storage and Queue Storage with built-in health checks and telemetry"
+icon: "cloud"
+---
+
+## Overview
+
+The Azure Storage components provide integration with Azure Storage services, including Blob Storage and Queue Storage. Each component registers the appropriate client type in your dependency injection container and automatically enables health checks, logging, and distributed tracing.
+
+## Available components
+
+<CardGroup cols={2}>
+
+<Card title="Blob Storage" icon="file">
+  Store and manage unstructured data like images, documents, and backups
+</Card>
+
+<Card title="Queue Storage" icon="list">
+  Implement reliable messaging between application components
+</Card>
+
+</CardGroup>
+
+## Blob Storage
+
+The `Aspire.Azure.Storage.Blobs` component registers a [BlobServiceClient](https://learn.microsoft.com/dotnet/api/azure.storage.blobs.blobserviceclient) for working with Azure Blob Storage.
+
+### Installation
+
+```bash
+dotnet add package Aspire.Azure.Storage.Blobs
+```
+
+### Prerequisites
+
+- Azure subscription - [create one for free](https://azure.microsoft.com/free/)
+- Azure Storage account - [create a storage account](https://learn.microsoft.com/azure/storage/common/storage-account-create)
+
+### Usage
+
+Register the component in your service's `Program.cs`:
+
+```csharp
+builder.AddAzureBlobServiceClient("blobs");
+```
+
+Inject and use the client:
+
+```csharp
+public class FileService
+{
+    private readonly BlobServiceClient _blobServiceClient;
+    private readonly BlobContainerClient _container;
+
+    public FileService(BlobServiceClient blobServiceClient)
+    {
+        _blobServiceClient = blobServiceClient;
+        _container = blobServiceClient.GetBlobContainerClient("uploads");
+    }
+
+    public async Task<string> UploadFileAsync(Stream content, string fileName)
+    {
+        await _container.CreateIfNotExistsAsync();
+        
+        var blobClient = _container.GetBlobClient(fileName);
+        await blobClient.UploadAsync(content, overwrite: true);
+        
+        return blobClient.Uri.ToString();
+    }
+
+    public async Task<Stream> DownloadFileAsync(string fileName)
+    {
+        var blobClient = _container.GetBlobClient(fileName);
+        var response = await blobClient.DownloadAsync();
+        return response.Value.Content;
+    }
+
+    public async Task DeleteFileAsync(string fileName)
+    {
+        var blobClient = _container.GetBlobClient(fileName);
+        await blobClient.DeleteIfExistsAsync();
+    }
+
+    public async Task<List<string>> ListFilesAsync(string prefix = "")
+    {
+        var files = new List<string>();
+        
+        await foreach (var blob in _container.GetBlobsAsync(prefix: prefix))
+        {
+            files.Add(blob.Name);
+        }
+        
+        return files;
+    }
+}
+```
+
+### Configuration
+
+#### Service URI (recommended)
+
+Provide a service URI in your `appsettings.json`:
+
+```json
+{
+  "ConnectionStrings": {
+    "blobs": "https://myaccount.blob.core.windows.net/"
+  }
+}
+```
+
+This approach works with `DefaultAzureCredential` for authentication.
+
+#### Connection string
+
+Alternatively, use a connection string:
+
+```json
+{
+  "ConnectionStrings": {
+    "blobs": "DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=mykey;EndpointSuffix=core.windows.net"
+  }
+}
+```
+
+#### Configuration providers
+
+```json
+{
+  "Aspire": {
+    "Azure": {
+      "Storage": {
+        "Blobs": {
+          "DisableHealthChecks": false,
+          "DisableTracing": false,
+          "ClientOptions": {
+            "Diagnostics": {
+              "ApplicationId": "myapp"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### Inline configuration
+
+```csharp
+builder.AddAzureBlobServiceClient("blobs", settings => 
+{
+    settings.DisableHealthChecks = false;
+});
+
+builder.AddAzureBlobServiceClient("blobs",
+    configureClientBuilder: clientBuilder => 
+    {
+        clientBuilder.ConfigureOptions(options => 
+            options.Diagnostics.ApplicationId = "myapp");
+    });
+```
+
+### Common scenarios
+
+#### Upload with metadata
+
+```csharp
+public async Task UploadWithMetadataAsync(Stream content, string fileName)
+{
+    var blobClient = _container.GetBlobClient(fileName);
+    
+    var metadata = new Dictionary<string, string>
+    {
+        { "uploadedBy", "user@example.com" },
+        { "uploadedAt", DateTime.UtcNow.ToString("O") }
+    };
+
+    var options = new BlobUploadOptions
+    {
+        Metadata = metadata,
+        HttpHeaders = new BlobHttpHeaders
+        {
+            ContentType = "application/pdf"
+        }
+    };
+
+    await blobClient.UploadAsync(content, options);
+}
+```
+
+#### Generate SAS token
+
+```csharp
+public string GenerateDownloadUrl(string fileName, TimeSpan expiresIn)
+{
+    var blobClient = _container.GetBlobClient(fileName);
+    
+    var sasBuilder = new BlobSasBuilder
+    {
+        BlobContainerName = _container.Name,
+        BlobName = fileName,
+        Resource = "b",
+        ExpiresOn = DateTimeOffset.UtcNow.Add(expiresIn)
+    };
+    
+    sasBuilder.SetPermissions(BlobSasPermissions.Read);
+    
+    var sasToken = blobClient.GenerateSasUri(sasBuilder);
+    return sasToken.ToString();
+}
+```
+
+#### Copy blob
+
+```csharp
+public async Task CopyBlobAsync(string sourceFileName, string destFileName)
+{
+    var sourceClient = _container.GetBlobClient(sourceFileName);
+    var destClient = _container.GetBlobClient(destFileName);
+    
+    var operation = await destClient.StartCopyFromUriAsync(sourceClient.Uri);
+    await operation.WaitForCompletionAsync();
+}
+```
+
+## Queue Storage
+
+The `Aspire.Azure.Storage.Queues` component registers a [QueueServiceClient](https://learn.microsoft.com/dotnet/api/azure.storage.queues.queueserviceclient) for working with Azure Queue Storage.
+
+### Installation
+
+```bash
+dotnet add package Aspire.Azure.Storage.Queues
+```
+
+### Usage
+
+Register the component in your service's `Program.cs`:
+
+```csharp
+builder.AddAzureQueueServiceClient("queue");
+```
+
+Inject and use the client:
+
+```csharp
+public class MessageQueue
+{
+    private readonly QueueServiceClient _queueServiceClient;
+    private readonly QueueClient _queueClient;
+
+    public MessageQueue(QueueServiceClient queueServiceClient)
+    {
+        _queueServiceClient = queueServiceClient;
+        _queueClient = queueServiceClient.GetQueueClient("orders");
+    }
+
+    public async Task SendMessageAsync(string message)
+    {
+        await _queueClient.CreateIfNotExistsAsync();
+        await _queueClient.SendMessageAsync(message);
+    }
+
+    public async Task<string> ReceiveMessageAsync()
+    {
+        var response = await _queueClient.ReceiveMessageAsync();
+        
+        if (response.Value != null)
+        {
+            var message = response.Value;
+            
+            // Process the message
+            var body = message.MessageText;
+            
+            // Delete the message
+            await _queueClient.DeleteMessageAsync(
+                message.MessageId, 
+                message.PopReceipt);
+            
+            return body;
+        }
+        
+        return null;
+    }
+
+    public async Task<List<string>> PeekMessagesAsync(int count = 10)
+    {
+        var messages = new List<string>();
+        
+        var response = await _queueClient.PeekMessagesAsync(count);
+        
+        foreach (var message in response.Value)
+        {
+            messages.Add(message.MessageText);
+        }
+        
+        return messages;
+    }
+}
+```
+
+### Configuration
+
+#### Service URI (recommended)
+
+```json
+{
+  "ConnectionStrings": {
+    "queue": "https://myaccount.queue.core.windows.net/"
+  }
+}
+```
+
+#### Connection string
+
+```json
+{
+  "ConnectionStrings": {
+    "queue": "DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=mykey;EndpointSuffix=core.windows.net"
+  }
+}
+```
+
+#### Configuration providers
+
+```json
+{
+  "Aspire": {
+    "Azure": {
+      "Storage": {
+        "Queues": {
+          "DisableHealthChecks": false,
+          "DisableTracing": false,
+          "ClientOptions": {
+            "Diagnostics": {
+              "ApplicationId": "myapp"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### Inline configuration
+
+```csharp
+builder.AddAzureQueueServiceClient("queue", settings => 
+{
+    settings.DisableHealthChecks = false;
+});
+```
+
+### Common scenarios
+
+#### Process messages with visibility timeout
+
+```csharp
+public async Task ProcessMessagesAsync(CancellationToken cancellationToken)
+{
+    while (!cancellationToken.IsCancellationRequested)
+    {
+        var response = await _queueClient.ReceiveMessageAsync(
+            visibilityTimeout: TimeSpan.FromMinutes(5),
+            cancellationToken: cancellationToken);
+
+        if (response.Value != null)
+        {
+            var message = response.Value;
+            
+            try
+            {
+                // Process message
+                await ProcessMessageAsync(message.MessageText);
+                
+                // Delete on success
+                await _queueClient.DeleteMessageAsync(
+                    message.MessageId,
+                    message.PopReceipt,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Log error - message will become visible again
+                _logger.LogError(ex, "Failed to process message");
+            }
+        }
+        else
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+    }
+}
+```
+
+#### Send message with delay
+
+```csharp
+public async Task SendDelayedMessageAsync(string message, TimeSpan delay)
+{
+    await _queueClient.SendMessageAsync(
+        message,
+        visibilityTimeout: delay);
+}
+```
+
+#### Update message visibility
+
+```csharp
+public async Task ExtendProcessingTimeAsync(
+    string messageId,
+    string popReceipt,
+    TimeSpan additionalTime)
+{
+    await _queueClient.UpdateMessageAsync(
+        messageId,
+        popReceipt,
+        visibilityTimeout: additionalTime);
+}
+```
+
+## AppHost integration
+
+In your AppHost project, install the Azure Storage hosting package:
+
+```bash
+dotnet add package Aspire.Hosting.Azure.Storage
+```
+
+Register Azure Storage resources:
+
+```csharp
+var storage = builder.AddAzureStorage("storage");
+
+var blobs = storage.AddBlobs("blobs");
+var queues = storage.AddQueues("queue");
+
+var myService = builder.AddProject<Projects.MyService>()
+                       .WithReference(blobs)
+                       .WithReference(queues);
+```
+
+For local development, you can use the storage emulator:
+
+```csharp
+var storage = builder.AddAzureStorage("storage")
+                     .RunAsEmulator();
+```
+
+Consume in your service:
+
+```csharp
+builder.AddAzureBlobServiceClient("blobs");
+builder.AddAzureQueueServiceClient("queue");
+```
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Use managed identity in production">
+    Always use managed identity or DefaultAzureCredential in production instead of connection strings with account keys.
+  </Accordion>
+  
+  <Accordion title="Implement retry policies">
+    Configure retry policies for transient failures:
+    
+    ```csharp
+    builder.AddAzureBlobServiceClient("blobs",
+        configureClientBuilder: clientBuilder => 
+        {
+            clientBuilder.ConfigureOptions(options =>
+            {
+                options.Retry.MaxRetries = 3;
+                options.Retry.Delay = TimeSpan.FromSeconds(2);
+            });
+        });
+    ```
+  </Accordion>
+  
+  <Accordion title="Use appropriate blob types">
+    Choose the right blob type for your use case:
+    - Block blobs: General-purpose files (images, documents)
+    - Append blobs: Log files, audit trails
+    - Page blobs: Virtual hard disks (VHDs)
+  </Accordion>
+  
+  <Accordion title="Implement proper error handling">
+    Handle storage exceptions appropriately:
+    
+    ```csharp
+    try
+    {
+        await blobClient.UploadAsync(content);
+    }
+    catch (RequestFailedException ex) when (ex.Status == 409)
+    {
+        // Blob already exists
+    }
+    catch (RequestFailedException ex) when (ex.Status == 404)
+    {
+        // Container not found
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use queue poisoning detection">
+    Track dequeue count to detect poison messages:
+    
+    ```csharp
+    var message = response.Value;
+    if (message.DequeueCount > 5)
+    {
+        // Move to poison queue
+        await _poisonQueueClient.SendMessageAsync(message.MessageText);
+        await _queueClient.DeleteMessageAsync(
+            message.MessageId,
+            message.PopReceipt);
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Additional resources
+
+- [Azure Blob Storage documentation](https://github.com/Azure/azure-sdk-for-net/blob/main/sdk/storage/Azure.Storage.Blobs/README.md)
+- [Azure Queue Storage documentation](https://github.com/Azure/azure-sdk-for-net/blob/main/sdk/storage/Azure.Storage.Queues/README.md)
+- [.NET Aspire components](https://github.com/dotnet/aspire/tree/main/src/Components)
+
+## Related components
+
+<CardGroup cols={2}>
+
+<Card title="Azure Cosmos DB" icon="cloud" href="/components/azure-cosmos">
+  Connect to Azure Cosmos DB
+</Card>
+
+<Card title="Azure Service Bus" icon="cloud" href="/components/azure-service-bus">
+  Work with Azure Service Bus
+</Card>
+
+<Card title="Redis" icon="database" href="/components/stackexchange-redis">
+  Add caching with Redis
+</Card>
+
+<Card title="Azure Storage Hosting" icon="server" href="/hosting/azure-storage">
+  Learn about the Azure Storage hosting integration
+</Card>
+
+</CardGroup>

@@ -1,0 +1,432 @@
+---
+title: Configuration Management
+description: Learn how to manage configuration in .NET Aspire applications
+---
+
+Configuration is a critical part of any distributed application. .NET Aspire provides multiple ways to configure your resources, from simple key-value pairs to complex hierarchical settings.
+
+## Configuration Sources
+
+The AppHost builder supports all standard .NET configuration sources:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+// Configuration is automatically loaded from:
+// 1. appsettings.json
+// 2. appsettings.{Environment}.json
+// 3. User secrets (in Development)
+// 4. Environment variables
+// 5. Command-line arguments
+```
+
+### Accessing Configuration
+
+Access configuration in your AppHost:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+// Get a single value
+var apiKey = builder.Configuration["ExternalApi:ApiKey"];
+
+// Get a section
+var apiConfig = builder.Configuration.GetSection("ExternalApi");
+var apiKey = apiConfig["ApiKey"];
+var baseUrl = apiConfig["BaseUrl"];
+```
+
+### Adding Configuration Sources
+
+Add additional configuration sources:
+
+<CodeGroup>
+
+```csharp JSON File
+builder.Configuration.AddJsonFile(
+    "appsettings.local.json", 
+    optional: true, 
+    reloadOnChange: true);
+```
+
+```csharp Environment Variables
+builder.Configuration.AddEnvironmentVariables(prefix: "MYAPP_");
+```
+
+```csharp Key-Value Pairs
+builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Feature:EnableBeta"] = "true",
+    ["Logging:LogLevel:Default"] = "Information"
+});
+```
+
+```csharp Azure Key Vault
+builder.Configuration.AddAzureKeyVault(
+    new Uri("https://myvault.vault.azure.net/"),
+    new DefaultAzureCredential());
+```
+
+</CodeGroup>
+
+## Parameters
+
+Parameters are a special type of configuration designed for deployment-time values. They can be:
+
+- Prompted for during `azd` deployment
+- Stored securely in user secrets or Azure Key Vault
+- Validated and typed
+
+### Creating Parameters
+
+<Tabs>
+  <Tab title="String Parameter">
+    ```csharp
+    var apiKey = builder.AddParameter("api-key", secret: true);
+    ```
+    
+    The `secret: true` flag marks the parameter as sensitive, hiding it in logs and the dashboard.
+  </Tab>
+  
+  <Tab title="Parameter with Default">
+    ```csharp
+    var environment = builder.AddParameter("environment", defaultValue: "development");
+    ```
+  </Tab>
+  
+  <Tab title="Generated Parameter">
+    ```csharp
+    var password = builder.AddParameter("db-password", secret: true, defaultValue: GeneratePassword());
+    
+    static string GeneratePassword()
+    {
+        // Generate a secure random password
+        return Guid.NewGuid().ToString("N");
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Using Parameters
+
+Use parameters in resource configuration:
+
+```csharp
+var apiKey = builder.AddParameter("api-key", secret: true);
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment("ExternalApi__ApiKey", apiKey);
+```
+
+Or in connection strings:
+
+```csharp
+var password = builder.AddParameter("sql-password", secret: true);
+
+var sql = builder.AddSqlServer("sql")
+                 .WithEnvironment("SA_PASSWORD", password);
+```
+
+### Parameter Resolution
+
+Parameters are resolved from multiple sources in this order:
+
+<Steps>
+
+### Command-line arguments
+
+```bash
+dotnet run --api-key "your-key-here"
+```
+
+### Environment variables
+
+```bash
+export API_KEY="your-key-here"
+dotnet run
+```
+
+### User secrets
+
+```bash
+dotnet user-secrets set "Parameters:api-key" "your-key-here"
+```
+
+### Configuration files
+
+```json appsettings.json
+{
+  "Parameters": {
+    "api-key": "your-key-here"
+  }
+}
+```
+
+### Default value
+
+If no value is found and a default is provided, the default is used.
+
+</Steps>
+
+## User Secrets
+
+User secrets provide a secure way to store sensitive configuration during development.
+
+### Enabling User Secrets
+
+Add a `UserSecretsId` to your AppHost project:
+
+```xml MyApp.AppHost.csproj
+<PropertyGroup>
+  <UserSecretsId>aspire-myapp-12345</UserSecretsId>
+</PropertyGroup>
+```
+
+Or initialize it using the CLI:
+
+```bash
+dotnet user-secrets init --project MyApp.AppHost
+```
+
+### Setting Secrets
+
+Set secrets from the command line:
+
+```bash
+cd MyApp.AppHost
+dotnet user-secrets set "Parameters:api-key" "your-secret-key"
+dotnet user-secrets set "ConnectionStrings:external-db" "Server=..."
+```
+
+### Automatic API Keys
+
+Aspire automatically generates and stores some API keys in user secrets:
+
+- Dashboard browser token
+- OTLP API key for telemetry
+- Resource service API key
+
+These are stored in user secrets so they remain consistent across runs without being committed to source control.
+
+## Configuring Resources
+
+Pass configuration to resources in several ways:
+
+### Environment Variables
+
+The most common way to configure resources:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment("Logging__LogLevel__Default", "Debug")
+                 .WithEnvironment("Feature__EnableBeta", "true");
+```
+
+See [Environment Variables](/guides/environment-variables) for more details.
+
+### Configuration Callbacks
+
+Use callbacks for dynamic configuration:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment(context =>
+                 {
+                     if (context.ExecutionContext.IsPublishMode)
+                     {
+                         context.EnvironmentVariables["ASPNETCORE_ENVIRONMENT"] = "Production";
+                     }
+                     else
+                     {
+                         context.EnvironmentVariables["ASPNETCORE_ENVIRONMENT"] = "Development";
+                     }
+                 });
+```
+
+### Command-line Arguments
+
+Pass arguments to projects and executables:
+
+```csharp
+var worker = builder.AddProject<Projects.Worker>("worker")
+                    .WithArgs("--queue", "high-priority");
+```
+
+## Environment-Specific Configuration
+
+Configure resources differently based on the environment:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var isDevelopment = builder.Environment.IsDevelopment();
+var isProduction = builder.Environment.IsProduction();
+
+if (isDevelopment)
+{
+    // Use local Redis
+    var cache = builder.AddRedis("cache");
+}
+else
+{
+    // Use Azure Cache for Redis in production
+    var cache = builder.AddAzureRedis("cache");
+}
+```
+
+### Setting the Environment
+
+Control the environment via:
+
+<Tabs>
+  <Tab title="Environment Variable">
+    ```bash
+    export DOTNET_ENVIRONMENT=Production
+    dotnet run
+    ```
+  </Tab>
+  
+  <Tab title="Command-line">
+    ```bash
+    dotnet run --environment Production
+    ```
+  </Tab>
+  
+  <Tab title="launchSettings.json">
+    ```json
+    {
+      "profiles": {
+        "MyApp.AppHost": {
+          "commandName": "Project",
+          "environmentVariables": {
+            "DOTNET_ENVIRONMENT": "Production"
+          }
+        }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Connection String Configuration
+
+Override resource connection strings via configuration:
+
+```csharp
+var db = builder.AddPostgres("postgres")
+                .AddDatabase("catalogdb");
+```
+
+Override the connection string:
+
+```json appsettings.json
+{
+  "ConnectionStrings": {
+    "catalogdb": "Host=production-server;Database=catalog;Username=app;Password=..."
+  }
+}
+```
+
+If a connection string is found in configuration, it takes precedence over the generated one.
+
+## Configuration in Publish Mode
+
+When generating deployment manifests, configuration is handled differently:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+if (builder.ExecutionContext.IsPublishMode)
+{
+    // Configuration for deployment
+    var externalDb = builder.Configuration.GetConnectionString("ProductionDb");
+}
+else
+{
+    // Configuration for local development
+    var db = builder.AddPostgres("postgres").AddDatabase("catalogdb");
+}
+```
+
+## Common Configuration Patterns
+
+<AccordionGroup>
+  <Accordion title="Feature Flags">
+    Use configuration to control features:
+    
+    ```csharp
+    var enableBeta = builder.Configuration.GetValue<bool>("Features:EnableBeta");
+    
+    if (enableBeta)
+    {
+        var betaService = builder.AddProject<Projects.BetaService>("beta-service");
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="External Service URLs">
+    Configure external services via parameters:
+    
+    ```csharp
+    var paymentUrl = builder.AddParameter("payment-api-url");
+    var paymentApi = builder.AddExternalService("payment-api", paymentUrl);
+    
+    var api = builder.AddProject<Projects.Api>("api")
+                     .WithReference(paymentApi);
+    ```
+  </Accordion>
+  
+  <Accordion title="Database Credentials">
+    Use parameters for credentials:
+    
+    ```csharp
+    var dbPassword = builder.AddParameter("db-password", secret: true);
+    
+    var db = builder.AddPostgres("postgres")
+                    .WithEnvironment("POSTGRES_PASSWORD", dbPassword)
+                    .AddDatabase("appdb");
+    ```
+  </Accordion>
+  
+  <Accordion title="Replica Count">
+    Configure scaling via configuration:
+    
+    ```csharp
+    var replicaCount = builder.Configuration.GetValue<int>("Api:Replicas", defaultValue: 1);
+    
+    var api = builder.AddProject<Projects.Api>("api")
+                     .WithReplicas(replicaCount);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Configuration Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Parameters for Secrets" icon="key">
+    Always use parameters with `secret: true` for sensitive values like API keys and passwords.
+  </Card>
+  
+  <Card title="Environment-Specific Config" icon="layer-group">
+    Use environment-specific configuration files (appsettings.Development.json, appsettings.Production.json).
+  </Card>
+  
+  <Card title="User Secrets in Development" icon="user-secret">
+    Store development secrets in user secrets, never commit them to source control.
+  </Card>
+  
+  <Card title="Validate Configuration" icon="check">
+    Validate required configuration at startup to fail fast if misconfigured.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="list" href="/guides/environment-variables">
+    Learn how to set environment variables
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/deployment/overview">
+    Deploy your configured application
+  </Card>
+</CardGroup>

@@ -1,0 +1,218 @@
+---
+title: Redis Hosting Integration
+description: Add Redis caching resources to your .NET Aspire application
+---
+
+The .NET Aspire Redis hosting integration provides extension methods for adding Redis resources to your distributed application for caching and data storage.
+
+## Installation
+
+Install the Redis hosting integration package in your AppHost project:
+
+```bash
+dotnet add package Aspire.Hosting.Redis
+```
+
+## Usage
+
+### Add Redis Resource
+
+In your AppHost project (`AppHost.cs`), add a Redis resource:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var redis = builder.AddRedis("cache");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(redis);
+
+builder.Build().Run();
+```
+
+### Consume in Service
+
+In your service project, reference the Redis resource using the client integration:
+
+```bash
+dotnet add package Aspire.StackExchange.Redis
+```
+
+Then in `Program.cs`:
+
+```csharp
+builder.AddRedisClient("cache");
+```
+
+## API Reference
+
+### AddRedis
+
+Adds a Redis container to the application model.
+
+```csharp
+public static IResourceBuilder<RedisResource> AddRedis(
+    this IDistributedApplicationBuilder builder,
+    string name,
+    int? port = null,
+    IResourceBuilder<ParameterResource>? password = null)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+- `port` - The host port to bind the underlying container to. If null, a random port will be assigned.
+- `password` - The parameter used to provide the password for the Redis resource. If `null` a random password will be generated.
+
+#### Returns
+
+A reference to the `IResourceBuilder<RedisResource>`.
+
+#### Remarks
+
+StackExchange.Redis doesn't support passwords with commas, so the default generated password will not contain special characters.
+
+## Configuration Examples
+
+### Custom Port
+
+```csharp
+var redis = builder.AddRedis("cache", port: 6379);
+```
+
+### Custom Password
+
+```csharp
+var password = builder.AddParameter("redis-password", secret: true);
+var redis = builder.AddRedis("cache", password: password);
+```
+
+### Data Persistence with Volumes
+
+```csharp
+var redis = builder.AddRedis("cache")
+                   .WithDataVolume();
+```
+
+### Redis Commander Management Tool
+
+```csharp
+var redis = builder.AddRedis("cache")
+                   .WithRedisCommander();
+```
+
+This adds a Redis Commander container that provides a web-based UI for managing your Redis instance.
+
+### Redis Insight Management Tool
+
+```csharp
+var redis = builder.AddRedis("cache")
+                   .WithRedisInsight();
+```
+
+This adds a Redis Insight container that provides advanced Redis management and monitoring capabilities.
+
+### Named Volumes
+
+```csharp
+var redis = builder.AddRedis("cache")
+                   .WithDataVolume("myapp-redis-data");
+```
+
+### Bind Mounts
+
+```csharp
+var redis = builder.AddRedis("cache")
+                   .WithDataBindMount("./redis-data");
+```
+
+### Persistence Configuration
+
+Configure Redis to use AOF (Append Only File) persistence:
+
+```csharp
+var redis = builder.AddRedis("cache")
+                   .WithPersistence();
+```
+
+Configure custom persistence interval:
+
+```csharp
+var redis = builder.AddRedis("cache")
+                   .WithPersistence(interval: TimeSpan.FromSeconds(60));
+```
+
+## Connection Properties
+
+When you reference a Redis resource using `WithReference`, the following connection properties are made available to the consuming project.
+
+### Redis Resource
+
+| Property Name | Description |
+|---------------|-------------|
+| `Host` | The hostname or IP address of the Redis server |
+| `Port` | The port number the Redis server is listening on |
+| `Password` | The password for authentication |
+| `Uri` | The connection URI, with the format `redis://:{Password}@{Host}:{Port}` |
+
+### Environment Variables
+
+Aspire exposes each property as an environment variable named `[RESOURCE]_[PROPERTY]`. For instance:
+
+- The `Uri` property of a resource called `cache` becomes `CACHE_URI`
+- The `Host` property becomes `CACHE_HOST`
+
+## Health Checks
+
+The Redis hosting integration includes built-in health checks. When a resource is referenced as a dependency using `WaitFor`, the dependent resource will wait until the Redis resource is able to service requests.
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(redis)
+                 .WaitFor(redis);
+```
+
+## Using Redis for Different Purposes
+
+### Caching
+
+```csharp
+var cache = builder.AddRedis("cache");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(cache);
+```
+
+In your service:
+
+```csharp
+builder.AddRedisOutputCache("cache");
+// or
+builder.AddRedisDistributedCache("cache");
+```
+
+### Session Storage
+
+```csharp
+var sessions = builder.AddRedis("sessions");
+
+var web = builder.AddProject<Projects.Web>("web")
+                 .WithReference(sessions);
+```
+
+### Message Queue
+
+```csharp
+var queue = builder.AddRedis("queue");
+
+var worker = builder.AddProject<Projects.Worker>("worker")
+                    .WithReference(queue);
+```
+
+## Additional Resources
+
+- [Redis Official Documentation](https://redis.io/documentation)
+- [StackExchange.Redis](https://stackexchange.github.io/StackExchange.Redis/)
+- [Aspire Redis Client Integration](/components/stackexchange-redis)
+- [Aspire Redis Output Cache Integration](/components/redis-output)
+- [Aspire Redis Distributed Cache Integration](/components/redis-distributed)

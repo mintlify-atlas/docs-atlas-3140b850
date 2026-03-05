@@ -1,0 +1,150 @@
+---
+title: Aspire CLI Overview
+description: Learn about the Aspire CLI commands and common workflows for building cloud-native applications.
+---
+
+# Aspire CLI Overview
+
+The Aspire CLI (`aspire`) is a command-line tool for creating, running, and managing .NET Aspire applications. It provides a streamlined developer experience for building distributed cloud-native applications.
+
+## Installation
+
+The Aspire CLI is included with the .NET Aspire workload. Install it using:
+
+```bash
+dotnet workload install aspire
+```
+
+## Available Commands
+
+The Aspire CLI organizes commands into functional groups:
+
+### Project Management
+
+- **[aspire new](/cli/new)** - Create a new app from an Aspire starter template
+- **[aspire init](/cli/init)** - Initialize Aspire in an existing codebase
+- **[aspire add](/cli/add)** - Add a hosting integration to the AppHost
+
+### Development
+
+- **[aspire run](/cli/run)** - Run an Aspire AppHost interactively for development
+- **aspire stop** - Stop a running AppHost instance
+- **aspire ps** - List running AppHost processes
+- **aspire logs** - View logs from a running AppHost
+
+### Deployment
+
+- **[aspire deploy](/cli/deploy)** - Deploy an AppHost to its deployment targets
+- **aspire publish** - Generate deployment manifests
+
+### Configuration
+
+- **aspire config** - Manage CLI configuration settings
+- **aspire doctor** - Diagnose common issues with your Aspire installation
+- **aspire update** - Check for and install CLI updates
+
+## Common Workflows
+
+### Creating a New Application
+
+Create a new Aspire application from a starter template:
+
+```bash
+aspire new aspire-starter --name MyApp
+cd MyApp
+aspire run
+```
+
+### Adding Aspire to an Existing Solution
+
+Initialize Aspire in an existing .NET solution:
+
+```bash
+cd MySolution
+aspire init
+aspire run
+```
+
+The `aspire init` command will:
+- Detect your existing solution file
+- Create an AppHost project
+- Create a ServiceDefaults project
+- Prompt you to add existing projects to the AppHost
+
+### Adding Integrations
+
+Add hosting integrations (databases, message queues, etc.) to your AppHost:
+
+```bash
+aspire add redis
+aspire add postgres
+aspire add rabbitmq
+```
+
+The CLI will automatically:
+- Search for available integration packages
+- Prompt you to select a version
+- Add the NuGet package to your AppHost project
+
+### Running Your Application
+
+Start your AppHost in development mode:
+
+```bash
+aspire run
+```
+
+This opens the Aspire Dashboard where you can:
+- Monitor resource health and state
+- View structured logs and traces
+- Inspect environment variables and endpoints
+- Test service-to-service communication
+
+### Deploying to Production
+
+Deploy your application to Azure or Kubernetes:
+
+```bash
+aspire deploy
+```
+
+The deployment workflow:
+- Generates deployment manifests
+- Provisions cloud resources
+- Deploys your services to the target environment
+
+## Global Options
+
+The following options are available for all commands:
+
+<ParamField path="--log-level" type="string">
+  Set the logging verbosity level: `Trace`, `Debug`, `Information`, `Warning`, `Error`, or `Critical`
+</ParamField>
+
+<ParamField path="--non-interactive" type="boolean">
+  Run in non-interactive mode (no prompts)
+</ParamField>
+
+<ParamField path="--no-logo" type="boolean">
+  Suppress the Aspire banner on startup
+</ParamField>
+
+<ParamField path="--wait-for-debugger" type="boolean">
+  Wait for a debugger to attach before starting the AppHost (useful for debugging AppHost startup)
+</ParamField>
+
+## Getting Help
+
+View help for any command:
+
+```bash
+aspire --help
+aspire run --help
+aspire add --help
+```
+
+## Next Steps
+
+- Learn how to [create new projects](/cli/new)
+- Explore how to [run your AppHost](/cli/run)
+- Discover [available integrations](/cli/add)

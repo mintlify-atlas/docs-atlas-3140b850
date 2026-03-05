@@ -1,0 +1,366 @@
+---
+title: Resources
+description: Learn how to define and use resources in .NET Aspire
+---
+
+.NET Aspire applications are composed of **resources** - the building blocks of your distributed application. Resources represent the services, databases, message queues, and other components that make up your system.
+
+## What is a Resource?
+
+A resource is any component in your application that implements the `IResource` interface. Every resource has:
+
+- A **name** - Used for service discovery and identification
+- **Annotations** - Metadata that describes configuration, endpoints, and behavior
+- A **type** - Determines how the resource is deployed and managed
+
+## Resource Types
+
+.NET Aspire supports three primary compute resource types:
+
+<CardGroup cols={3}>
+  <Card title="Projects" icon="code">
+    .NET applications running in your solution
+  </Card>
+  <Card title="Containers" icon="docker">
+    Docker containers for databases, caches, etc.
+  </Card>
+  <Card title="Executables" icon="terminal">
+    Any command-line program or process
+  </Card>
+</CardGroup>
+
+## Project Resources
+
+Project resources represent .NET projects in your solution. They're automatically compiled, run, and monitored.
+
+### Adding a Project
+
+<Tabs>
+  <Tab title="From Solution">
+    Reference a project that's already in your solution:
+    
+    ```csharp
+    var api = builder.AddProject<Projects.Api>("api");
+    ```
+    
+    The `Projects.Api` type is auto-generated when you add a project reference to your AppHost project.
+  </Tab>
+  
+  <Tab title="From Path">
+    Reference a project by its file path:
+    
+    ```csharp
+    var api = builder.AddProject("api", "../MyApp.Api/MyApp.Api.csproj");
+    ```
+    
+    Relative paths are resolved from the AppHost directory.
+  </Tab>
+</Tabs>
+
+### Project Configuration
+
+<Steps>
+
+### Launch profiles
+
+Aspire automatically reads `launchSettings.json` to configure endpoints. You can specify which profile to use:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api", launchProfileName: "Production");
+```
+
+Or exclude launch profiles entirely:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api", options =>
+{
+    options.ExcludeLaunchProfile = true;
+});
+```
+
+### Endpoints from Kestrel
+
+Project endpoints are automatically discovered from Kestrel configuration. If your project's `appsettings.json` contains:
+
+```json
+{
+  "Kestrel": {
+    "Endpoints": {
+      "Http": {
+        "Url": "http://localhost:5000"
+      },
+      "Https": {
+        "Url": "https://localhost:5001"
+      }
+    }
+  }
+}
+```
+
+These endpoints are automatically added to the project resource.
+
+### Replicas
+
+Scale a project to multiple instances:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReplicas(3);
+```
+
+</Steps>
+
+## Container Resources
+
+Container resources run Docker or Podman containers. They're perfect for databases, caches, message queues, and third-party services.
+
+### Adding a Container
+
+```csharp
+// Basic container
+var nginx = builder.AddContainer("nginx", "nginx", "latest");
+
+// Or specify just the image (assumes 'latest' tag)
+var nginx = builder.AddContainer("nginx", "nginx");
+```
+
+### Common Container Configuration
+
+<CodeGroup>
+
+```csharp Ports
+// Expose ports
+var app = builder.AddContainer("myapp", "myimage")
+                 .WithHttpEndpoint(port: 8080, targetPort: 80, name: "http");
+```
+
+```csharp Volumes
+// Persistent storage
+var db = builder.AddContainer("postgres", "postgres")
+                .WithVolume("postgres-data", "/var/lib/postgresql/data");
+
+// Anonymous volume
+var cache = builder.AddContainer("redis", "redis")
+                   .WithVolume("/data");
+```
+
+```csharp Bind Mounts
+// Mount local files into container
+var app = builder.AddContainer("myapp", "myimage")
+                 .WithBindMount("./config", "/app/config", isReadOnly: true);
+```
+
+```csharp Environment
+// Set environment variables
+var db = builder.AddContainer("postgres", "postgres")
+                .WithEnvironment("POSTGRES_PASSWORD", "secretpassword");
+```
+
+</CodeGroup>
+
+### Advanced Container Options
+
+<AccordionGroup>
+  <Accordion title="Custom Entrypoint">
+    Override the container's entrypoint:
+    
+    ```csharp
+    var app = builder.AddContainer("myapp", "myimage")
+                     .WithEntrypoint("/bin/sh");
+    ```
+  </Accordion>
+  
+  <Accordion title="Container Lifetime">
+    Control when containers are stopped:
+    
+    ```csharp
+    // Keep container running after AppHost stops
+    var db = builder.AddContainer("postgres", "postgres")
+                    .WithLifetime(ContainerLifetime.Persistent);
+    ```
+    
+    Options:
+    - `Persistent` - Container keeps running after AppHost stops
+    - `Session` - Container stops when AppHost stops (default)
+  </Accordion>
+  
+  <Accordion title="Network Aliases">
+    Add custom DNS names for container-to-container communication:
+    
+    ```csharp
+    var api = builder.AddContainer("api", "myapi")
+                     .WithContainerNetworkAlias("api-service");
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Integration Resources
+
+.NET Aspire provides pre-built integrations for common containers:
+
+```csharp
+// Instead of manually configuring Redis:
+var cache = builder.AddContainer("cache", "redis")
+                   .WithVolume("cache-data", "/data")
+                   .WithEnvironment(...);
+
+// Use the integration:
+var cache = builder.AddRedis("cache");
+```
+
+Available integrations include PostgreSQL, SQL Server, Redis, MongoDB, RabbitMQ, Kafka, and many more. See the [Hosting Integrations](/hosting/overview) documentation.
+
+## Executable Resources
+
+Executable resources run any command-line program. They're useful for:
+
+- Node.js, Python, or other non-.NET applications
+- Build tools and scripts
+- Custom services that don't run in containers
+
+### Adding an Executable
+
+```csharp
+var npm = builder.AddExecutable("frontend", "npm", "./frontend", "run", "dev");
+```
+
+Parameters:
+1. **name** - Resource identifier
+2. **command** - The executable to run (must be in PATH or use full path)
+3. **workingDirectory** - Where to run the command
+4. **args** - Command-line arguments
+
+<Warning>
+  For security, Aspire only runs executables found in your PATH environment variable. To run an executable in the current directory, use `./command` (Linux/macOS) or `.\\command.exe` (Windows).
+</Warning>
+
+### Executable Configuration
+
+<CodeGroup>
+
+```csharp Arguments
+// Add arguments
+var app = builder.AddExecutable("frontend", "npm", "./frontend")
+                 .WithArgs("run", "dev");
+
+// Or use callback for dynamic arguments
+var app = builder.AddExecutable("frontend", "npm", "./frontend")
+                 .WithArgs(context =>
+                 {
+                     context.Args.Add("run");
+                     context.Args.Add(context.ExecutionContext.IsPublishMode ? "build" : "dev");
+                 });
+```
+
+```csharp Environment
+// Set environment variables
+var app = builder.AddExecutable("frontend", "npm", "./frontend")
+                 .WithEnvironment("NODE_ENV", "development")
+                 .WithArgs("run", "dev");
+```
+
+```csharp Endpoints
+// Declare endpoints for service discovery
+var app = builder.AddExecutable("frontend", "npm", "./frontend")
+                 .WithHttpEndpoint(port: 3000, name: "http")
+                 .WithArgs("run", "dev");
+```
+
+</CodeGroup>
+
+### Node.js, NPM, and Yarn
+
+Aspire provides specialized methods for JavaScript applications:
+
+<Tabs>
+  <Tab title="Node.js">
+    ```csharp
+    var app = builder.AddNodeApp("frontend", "./frontend/app.js")
+                     .WithEnvironment("NODE_ENV", "development");
+    ```
+  </Tab>
+  
+  <Tab title="NPM">
+    ```csharp
+    var app = builder.AddNpmApp("frontend", "./frontend")
+                     .WithNpmPackageInstallation()
+                     .WithHttpEndpoint(port: 3000);
+    ```
+  </Tab>
+  
+  <Tab title="Yarn">
+    ```csharp
+    var app = builder.AddYarnApp("frontend", "./frontend", "dev")
+                     .WithYarnPackageInstallation()
+                     .WithHttpEndpoint(port: 3000);
+    ```
+  </Tab>
+</Tabs>
+
+## Resource Builder Pattern
+
+All resource methods return an `IResourceBuilder<T>`, enabling a fluent configuration syntax:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReplicas(3)
+                 .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Production")
+                 .WithReference(cache)
+                 .WithReference(database);
+```
+
+The builder provides methods to:
+
+- Configure the resource
+- Add annotations
+- Wire dependencies
+- Access the underlying resource
+
+## Working with Resources
+
+### Get a Resource Reference
+
+The builder returns a typed reference you can use later:
+
+```csharp
+var cache = builder.AddRedis("cache");
+var db = builder.AddPostgres("postgres").AddDatabase("mydb");
+
+// Use references when wiring dependencies
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(cache)
+                 .WithReference(db);
+```
+
+### Resource Names
+
+Every resource must have a unique name (case-insensitive):
+
+```csharp
+// This will throw an exception:
+var db1 = builder.AddPostgres("database");
+var db2 = builder.AddPostgres("database"); // ERROR: Duplicate name
+```
+
+Resource names are used for:
+- Service discovery
+- Dashboard display
+- Logging and diagnostics
+- Generated connection string keys
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Wire Dependencies" icon="link" href="/guides/dependencies">
+    Connect resources using WithReference
+  </Card>
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Learn about configuration management
+  </Card>
+  <Card title="Environment Variables" icon="list" href="/guides/environment-variables">
+    Pass configuration to resources
+  </Card>
+  <Card title="Hosting Integrations" icon="puzzle-piece" href="/hosting/overview">
+    Explore pre-built integrations
+  </Card>
+</CardGroup>

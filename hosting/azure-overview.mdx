@@ -1,0 +1,267 @@
+---
+title: Azure Hosting Integrations Overview
+description: Learn about .NET Aspire hosting integrations for Azure cloud services
+---
+
+The .NET Aspire Azure hosting integrations provide extension methods for adding Azure services to your distributed application with automatic provisioning and configuration.
+
+## Core Azure Package
+
+The core Azure hosting library provides foundational capabilities for working with Azure resources:
+
+```bash
+dotnet add package Aspire.Hosting.Azure
+```
+
+This package includes:
+
+- Azure provisioning infrastructure
+- Bicep template support
+- Azure authentication and credential management
+- Common Azure resource patterns
+
+## Azure Provisioning
+
+Azure hosting integrations support automatic development-time provisioning, eliminating manual resource configuration.
+
+### Configuration
+
+Set up Azure provisioning by configuring these values in user secrets:
+
+```json
+{
+  "Azure": {
+    "SubscriptionId": "<your subscription id>",
+    "ResourceGroupPrefix": "<prefix for the resource group>",
+    "Location": "<azure location>"
+  }
+}
+```
+
+### Setting User Secrets
+
+In your AppHost project directory:
+
+```bash
+dotnet user-secrets set "Azure:SubscriptionId" "your-subscription-id"
+dotnet user-secrets set "Azure:ResourceGroupPrefix" "myapp"
+dotnet user-secrets set "Azure:Location" "eastus"
+```
+
+<Note>
+Developers must have **Owner** access to the target subscription so that role assignments can be configured for the provisioned resources.
+</Note>
+
+## Available Azure Integrations
+
+### Azure Cosmos DB
+
+Globally distributed, multi-model database service.
+
+```bash
+dotnet add package Aspire.Hosting.Azure.CosmosDB
+```
+
+[Learn more about Azure Cosmos DB integration](/hosting/azure-cosmos-db)
+
+### Azure Storage
+
+Blob, queue, table, and data lake storage services.
+
+```bash
+dotnet add package Aspire.Hosting.Azure.Storage
+```
+
+[Learn more about Azure Storage integration](/hosting/azure-storage)
+
+### Azure Service Bus
+
+Enterprise messaging service with queues and publish-subscribe topics.
+
+```bash
+dotnet add package Aspire.Hosting.Azure.ServiceBus
+```
+
+[Learn more about Azure Service Bus integration](/hosting/azure-service-bus)
+
+### Other Azure Services
+
+Additional Azure hosting integrations are available:
+
+- **Azure Key Vault** - Secrets and certificate management
+- **Azure Event Hubs** - Big data streaming and event ingestion
+- **Azure SQL Database** - Managed SQL Server database
+- **Azure PostgreSQL** - Managed PostgreSQL database
+- **Azure Redis Cache** - Managed Redis cache
+- **Azure App Configuration** - Application configuration service
+- **Azure Application Insights** - Application performance monitoring
+- **Azure SignalR Service** - Real-time messaging service
+- **Azure Web PubSub** - Publish-subscribe messaging for web apps
+
+## Using Bicep Templates
+
+The core Azure hosting library supports custom Bicep templates for resources not covered by specific integrations:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var customResource = builder.AddBicepTemplate("myresource", "template.bicep")
+                            .WithParameter("location", "eastus")
+                            .WithParameter("sku", "Standard");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(customResource);
+```
+
+### Bicep Template Example
+
+Create a `template.bicep` file:
+
+```bicep
+param location string
+param sku string
+
+resource storageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' = {
+  name: 'storage${uniqueString(resourceGroup().id)}'
+  location: location
+  sku: {
+    name: sku
+  }
+  kind: 'StorageV2'
+}
+
+output endpoint string = storageAccount.properties.primaryEndpoints.blob
+```
+
+## Authentication
+
+Azure hosting integrations use Azure Identity for authentication:
+
+- **Local Development**: Uses your Azure CLI credentials or Visual Studio/VS Code authentication
+- **Production**: Uses managed identities when deployed to Azure
+
+### Local Development Setup
+
+Ensure you're authenticated with Azure:
+
+```bash
+az login
+az account set --subscription "your-subscription-id"
+```
+
+## Deployment Modes
+
+### Local Development
+
+Run Azure resources locally using emulators when available:
+
+```csharp
+var cosmos = builder.AddAzureCosmosDB("cosmos")
+                    .RunAsEmulator();
+
+var storage = builder.AddAzureStorage("storage")
+                     .RunAsEmulator();
+```
+
+### Cloud Development
+
+Provision real Azure resources for development:
+
+```csharp
+var cosmos = builder.AddAzureCosmosDB("cosmos");
+var storage = builder.AddAzureStorage("storage");
+```
+
+Resources are automatically provisioned when you run the AppHost.
+
+### Production Deployment
+
+Deploy to Azure using:
+
+```bash
+azd deploy
+```
+
+The Azure Developer CLI (`azd`) handles resource provisioning and application deployment.
+
+## Connection String Management
+
+Azure integrations automatically manage connection strings using:
+
+- **Managed Identity**: Preferred for production (no secrets in configuration)
+- **Access Keys**: Used for emulators and when explicitly configured
+- **Connection Strings**: Generated automatically for compatible services
+
+## Common Patterns
+
+### Multi-Service Application
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var storage = builder.AddAzureStorage("storage");
+var blobs = storage.AddBlobs("blobs");
+var queues = storage.AddQueues("queues");
+
+var cosmos = builder.AddAzureCosmosDB("cosmos")
+                    .AddDatabase("catalogdb");
+
+var serviceBus = builder.AddAzureServiceBus("messaging");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(blobs)
+                 .WithReference(cosmos)
+                 .WithReference(serviceBus);
+
+var worker = builder.AddProject<Projects.Worker>("worker")
+                    .WithReference(queues)
+                    .WithReference(serviceBus);
+```
+
+### Environment-Specific Configuration
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var storage = builder.AddAzureStorage("storage");
+
+if (builder.Environment.IsDevelopment())
+{
+    storage.RunAsEmulator();
+}
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(storage);
+```
+
+## Resource Naming
+
+Azure resources are named automatically using:
+
+- Resource name from `AddXxx` method
+- Environment name
+- Unique suffix for global uniqueness
+
+You can customize naming:
+
+```csharp
+var storage = builder.AddAzureStorage("storage")
+                     .WithName("myappstorage");
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Azure Cosmos DB" icon="database" href="/hosting/azure-cosmos-db">
+    Add globally distributed NoSQL database
+  </Card>
+  <Card title="Azure Storage" icon="box" href="/hosting/azure-storage">
+    Add blob, queue, and table storage
+  </Card>
+  <Card title="Azure Service Bus" icon="bus" href="/hosting/azure-service-bus">
+    Add enterprise messaging
+  </Card>
+  <Card title="Azure Developer CLI" icon="terminal" href="https://learn.microsoft.com/azure/developer/azure-developer-cli/">
+    Learn about azd for deployment
+  </Card>
+</CardGroup>

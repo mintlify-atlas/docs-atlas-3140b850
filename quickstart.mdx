@@ -1,80 +1,527 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Build and run your first .NET Aspire application in 5 minutes
 ---
 
-## Get started in three steps
+This quickstart will guide you through creating, running, and exploring your first .NET Aspire application. You'll build a simple web application with an API backend, Redis cache, and see how Aspire orchestrates everything together.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, make sure you have:
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+  <Accordion title=".NET SDK">
+    You need .NET 9.0 or later. Check your version:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+    ```bash
+    dotnet --version
+    ```
+    
+    If you need to install or update, visit [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download).
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+  
+  <Accordion title="Container Runtime">
+    Aspire uses containers for infrastructure services like databases and caches. Install one of:
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+    - **Docker Desktop** ([Windows](https://docs.docker.com/desktop/install/windows-install/) | [macOS](https://docs.docker.com/desktop/install/mac-install/) | [Linux](https://docs.docker.com/desktop/install/linux-install/))
+    - **Podman** ([Windows](https://podman.io/docs/installation#windows) | [macOS](https://podman.io/docs/installation#macos) | [Linux](https://podman.io/docs/installation#installing-on-linux))
+    
+    Verify Docker is running:
+    ```bash
+    docker --version
+    ```
+  </Accordion>
+  
+  <Accordion title="Aspire CLI (will be installed in Step 1)">
+    The Aspire CLI will be installed in the first step of this quickstart.
   </Accordion>
 </AccordionGroup>
 
-### Step 2: Deploy your changes
+## Step 1: Install the Aspire CLI
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+The Aspire CLI provides commands to create, run, and manage Aspire projects.
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+<CodeGroup>
+```powershell Windows
+irm https://aspire.dev/install.ps1 | iex
+```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+```bash macOS/Linux
+curl -sSL https://aspire.dev/install.sh | bash
+```
+</CodeGroup>
 
-### Step 3: Go live
+Verify the installation:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+```bash
+aspire --version
+```
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+The CLI will automatically add itself to your PATH. You may need to restart your terminal for the changes to take effect.
+</Note>
+
+## Step 2: Create Your First Aspire App
+
+Create a new Aspire application using the starter template:
+
+```bash
+aspire new
+```
+
+The CLI will ask you a few questions:
+
+```
+Enter the project name: my-first-app
+Enter the output path: ./my-first-app
+✔ Using Redis Cache for caching.
+Select a template version:
+  > stable
+```
+
+Navigate to your new project:
+
+```bash
+cd my-first-app
+```
+
+<Note>
+The `aspire new` command creates a solution with three projects:
+- **AppHost** - Orchestrates your app (defines the app model)
+- **ApiService** - A backend API service
+- **Web** - A Blazor web frontend
+</Note>
+
+## Step 3: Explore the Project Structure
+
+Let's look at what was created:
+
+```
+my-first-app/
+├── AppHost/
+│   ├── Program.cs           # App model definition
+│   └── AppHost.csproj
+├── ApiService/
+│   ├── Program.cs           # API service
+│   └── ApiService.csproj
+├── Web/
+│   ├── Program.cs           # Web frontend
+│   ├── Components/
+│   └── Web.csproj
+└── my-first-app.sln
+```
+
+### The AppHost
+
+Open `AppHost/Program.cs` to see how your application is defined:
+
+```csharp AppHost/Program.cs
+var builder = DistributedApplication.CreateBuilder(args);
+
+var cache = builder.AddRedis("cache");
+
+var apiService = builder.AddProject<Projects.ApiService>("apiservice")
+    .WithHttpHealthCheck("/health");
+
+builder.AddProject<Projects.Web>("webfrontend")
+    .WithExternalHttpEndpoints()
+    .WithHttpHealthCheck("/health")
+    .WithReference(cache)
+    .WaitFor(cache)
+    .WithReference(apiService)
+    .WaitFor(apiService);
+
+builder.Build().Run();
+```
+
+This code:
+1. Creates a Redis cache container
+2. Adds the API service with a health check
+3. Adds the web frontend that references both the cache and API
+4. Sets up dependencies so services start in the right order
+
+### The API Service
+
+The API service (`ApiService/Program.cs`) is a standard ASP.NET Core minimal API with Aspire service defaults:
+
+```csharp ApiService/Program.cs
+var builder = WebApplication.CreateBuilder(args);
+
+// Add service defaults (telemetry, health checks, service discovery)
+builder.AddServiceDefaults();
+
+builder.Services.AddProblemDetails();
+builder.Services.AddOpenApi();
+
+var app = builder.Build();
+
+app.UseExceptionHandler();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+}
+
+string[] summaries = ["Freezing", "Bracing", "Chilly", "Cool", 
+                      "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"];
+
+app.MapGet("/weatherforecast", () =>
+{
+    var forecast = Enumerable.Range(1, 5).Select(index =>
+        new WeatherForecast
+        (
+            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
+            Random.Shared.Next(-20, 55),
+            summaries[Random.Shared.Next(summaries.Length)]
+        ))
+        .ToArray();
+    return forecast;
+})
+.WithName("GetWeatherForecast");
+
+app.MapDefaultEndpoints(); // Exposes health checks
+
+app.Run();
+
+record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
+{
+    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+}
+```
+
+### The Web Frontend
+
+The web frontend is a Blazor application that calls the API service. Notice how it uses service discovery:
+
+```csharp Web/Program.cs
+var builder = WebApplication.CreateBuilder(args);
+
+builder.AddServiceDefaults();
+builder.AddRedisOutputCache("cache");
+
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+// Service discovery: "apiservice" resolves to the actual URL
+builder.Services.AddHttpClient<WeatherApiClient>(client =>
+    {
+        client.BaseAddress = new("https+http://apiservice");
+    });
+
+var app = builder.Build();
+
+app.UseOutputCache();
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
+
+app.MapDefaultEndpoints();
+
+app.Run();
+```
+
+<Note>
+The URL `"https+http://apiservice"` uses **service discovery**. Aspire automatically resolves "apiservice" to the correct URL, preferring HTTPS over HTTP. No hardcoded ports or hosts needed!
+</Note>
+
+## Step 4: Run Your Application
+
+Start your entire distributed application with a single command:
+
+```bash
+aspire run
+```
+
+You'll see output similar to:
+
+```
+Building...
+Launching Aspire dashboard: http://localhost:15085/login?t=<token>
+Starting resource cache...
+Starting resource apiservice...
+Starting resource webfrontend...
+
+Aspire application is running at:
+  Dashboard: http://localhost:15085
+  Web:       http://localhost:5174
+```
+
+<Steps>
+  <Step title="Dashboard Opens Automatically">
+    Your browser will automatically open the Aspire Dashboard. This is your command center for monitoring the application.
+    
+    The dashboard shows:
+    - **Resources**: All running services and containers
+    - **Console Logs**: Live logs from each resource
+    - **Structured Logs**: Searchable, filterable telemetry
+    - **Traces**: Distributed traces across service calls
+    - **Metrics**: Performance counters and custom metrics
+  </Step>
+  
+  <Step title="View Running Resources">
+    In the dashboard, click on the **Resources** tab. You'll see:
+    
+    - `cache` (Redis container) - Running on a random port
+    - `apiservice` (.NET project) - Your API service
+    - `webfrontend` (.NET project) - Your web frontend
+    
+    Each resource shows its status, endpoints, and environment variables.
+  </Step>
+  
+  <Step title="Open the Web Application">
+    Click on the endpoint for `webfrontend` or navigate to `http://localhost:5174` (the port may vary).
+    
+    You'll see a Blazor web app showing a weather forecast fetched from the API service.
+  </Step>
+  
+  <Step title="Explore Logs and Traces">
+    In the dashboard:
+    
+    1. Click **Console Logs** to see live output from all services
+    2. Click **Structured Logs** to filter and search telemetry
+    3. Click **Traces** to see the request flow from web → API
+    
+    Make a few requests in the web app, then explore the traces to see how requests flow through your distributed application.
+  </Step>
+</Steps>
+
+<Note>
+Notice you didn't have to:
+- Configure connection strings
+- Set up service discovery
+- Configure telemetry or logging
+- Manage ports manually
+
+Aspire handled all of that automatically!
+</Note>
+
+## Step 5: Make Changes and See Hot Reload
+
+With your app still running, let's make a change:
+
+1. Open `ApiService/Program.cs`
+2. Change the weather summaries:
+
+```csharp ApiService/Program.cs
+string[] summaries = ["Sunny", "Partly Cloudy", "Cloudy", "Rainy", "Stormy"];
+```
+
+3. Save the file
+
+Aspire will automatically rebuild and restart the API service. Refresh your web app to see the new weather descriptions.
+
+<Warning>
+Hot reload works for code changes in your services. Changes to the AppHost require restarting `aspire run`.
+</Warning>
+
+## Step 6: Add a Database
+
+Let's add a PostgreSQL database to store weather data.
+
+1. Stop the app (Ctrl+C in your terminal)
+
+2. Open `AppHost/Program.cs` and add PostgreSQL:
+
+```csharp AppHost/Program.cs
+var builder = DistributedApplication.CreateBuilder(args);
+
+var cache = builder.AddRedis("cache");
+
+// Add PostgreSQL with a database
+var postgres = builder.AddPostgres("postgres")
+    .WithPgAdmin()  // Optional: adds pgAdmin UI
+    .AddDatabase("weatherdb");
+
+var apiService = builder.AddProject<Projects.ApiService>("apiservice")
+    .WithHttpHealthCheck("/health")
+    .WithReference(postgres);  // Reference the database
+
+builder.AddProject<Projects.Web>("webfrontend")
+    .WithExternalHttpEndpoints()
+    .WithHttpHealthCheck("/health")
+    .WithReference(cache)
+    .WaitFor(cache)
+    .WithReference(apiService)
+    .WaitFor(apiService);
+
+builder.Build().Run();
+```
+
+3. Add the PostgreSQL client integration to your API service:
+
+```bash
+cd ApiService
+dotnet add package Aspire.Npgsql
+cd ..
+```
+
+4. Update `ApiService/Program.cs` to use the database:
+
+```csharp ApiService/Program.cs
+var builder = WebApplication.CreateBuilder(args);
+
+builder.AddServiceDefaults();
+
+// Add PostgreSQL
+builder.AddNpgsqlDataSource("weatherdb");
+
+builder.Services.AddProblemDetails();
+builder.Services.AddOpenApi();
+
+var app = builder.Build();
+
+// ... rest of the code
+```
+
+5. Run the app again:
+
+```bash
+aspire run
+```
+
+Now you'll see a `postgres` container in the dashboard, and the API service has access to the database connection string automatically!
+
+## Understanding What Happened
+
+<AccordionGroup>
+  <Accordion title="Automatic Service Discovery">
+    When the web frontend references the API service with `client.BaseAddress = new("https+http://apiservice")`, Aspire:
+    
+    1. Resolves "apiservice" to the actual URL at runtime
+    2. Handles port allocation automatically
+    3. Prefers HTTPS over HTTP when available
+    4. Updates the configuration if services restart on different ports
+  </Accordion>
+  
+  <Accordion title="Configuration Injection">
+    When the API service references the database with `builder.AddNpgsqlDataSource("weatherdb")`, Aspire:
+    
+    1. Injects the connection string as configuration
+    2. Uses the name "weatherdb" to match the resource in AppHost
+    3. Automatically updates if the database container restarts
+  </Accordion>
+  
+  <Accordion title="Dependency Management">
+    The `.WithReference()` and `.WaitFor()` methods create a dependency graph:
+    
+    ```mermaid
+    graph TD
+      web[Web Frontend] --> cache[Redis Cache]
+      web --> api[API Service]
+      api --> db[(PostgreSQL)]
+    ```
+    
+    Aspire ensures resources start in the correct order and only after their dependencies are ready.
+  </Accordion>
+  
+  <Accordion title="Telemetry Configuration">
+    The `builder.AddServiceDefaults()` call adds:
+    
+    - OpenTelemetry exporters that send data to the dashboard
+    - Structured logging with proper formatting
+    - Distributed tracing context propagation
+    - Metrics collection and export
+    - Health check endpoints
+    
+    All without you writing any telemetry code!
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/concepts/app-model">
+    Learn more about the app model and how resources work
+  </Card>
+  
+  <Card title="Explore Integrations" icon="puzzle-piece" href="/hosting/overview">
+    Discover 40+ integrations for databases, messaging, and cloud services
+  </Card>
+  
+  <Card title="Build Real Apps" icon="hammer" href="/guides/hosting-basics">
+    Follow guides to build production-ready applications
+  </Card>
+  
+  <Card title="Deploy to Production" icon="rocket" href="/deployment/overview">
+    Learn how to deploy your Aspire app to Kubernetes or Azure
+  </Card>
+</CardGroup>
+
+## Common Next Actions
+
+### Add More Services
+
+You can add other types of resources to your AppHost:
+
+```csharp
+// Add a Node.js app
+builder.AddNodeApp("frontend", "../client-app", "app.ts")
+    .WithHttpEndpoint(env: "PORT");
+
+// Add a Python service
+builder.AddUvicornApp("ml-service", "../python-service", "app:app")
+    .WithReference(postgres);
+
+// Add RabbitMQ
+var messaging = builder.AddRabbitMQ("messaging");
+```
+
+### Explore the Dashboard
+
+The Aspire Dashboard is powerful. Try:
+
+- Filtering logs by severity or resource
+- Following a distributed trace from frontend to backend
+- Viewing metrics over time
+- Checking environment variables injected into each service
+
+### Learn the CLI
+
+Explore other CLI commands:
+
+```bash
+aspire --help           # See all commands
+aspire new --help       # Create new projects from templates
+aspire add postgres     # Add an integration to your project
+aspire logs apiservice  # View logs for a specific service
+aspire stop             # Stop the running application
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Container runtime not found">
+    Make sure Docker or Podman is running:
+    
+    ```bash
+    docker ps
+    ```
+    
+    If you see an error, start Docker Desktop or Podman Desktop.
+  </Accordion>
+  
+  <Accordion title="Port already in use">
+    If you get a "port already in use" error, Aspire will automatically try other ports. If you need to specify a port:
+    
+    ```csharp
+    builder.AddProject<Projects.Web>("webfrontend")
+        .WithHttpEndpoint(port: 8080);
+    ```
+  </Accordion>
+  
+  <Accordion title="Dashboard won't open">
+    The dashboard URL is shown in the terminal when you run `aspire run`. Copy the URL (including the token) and paste it into your browser.
+    
+    The token is required for authentication during development.
+  </Accordion>
+  
+  <Accordion title="Service can't connect to another service">
+    Make sure you:
+    1. Added `.WithReference()` in the AppHost
+    2. Used the correct resource name in your service code
+    3. Called `builder.AddServiceDefaults()` in your service
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+Congratulations! You've created, run, and explored your first .NET Aspire application. You're now ready to build more complex distributed applications with ease.
 </Note>

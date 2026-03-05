@@ -1,0 +1,340 @@
+---
+title: Azure Service Bus Hosting Integration
+description: Add Azure Service Bus messaging resources to your .NET Aspire application
+---
+
+The .NET Aspire Azure Service Bus hosting integration provides extension methods for adding Azure Service Bus resources including queues, topics, and subscriptions to your distributed application.
+
+## Installation
+
+Install the Azure Service Bus hosting integration package in your AppHost project:
+
+```bash
+dotnet add package Aspire.Hosting.Azure.ServiceBus
+```
+
+## Prerequisites
+
+- Azure subscription - [create one for free](https://azure.microsoft.com/free/)
+- Azure CLI installed and authenticated
+- Owner access to the target subscription for role assignments
+
+## Configuration
+
+Configure Azure provisioning settings in user secrets:
+
+```bash
+dotnet user-secrets set "Azure:SubscriptionId" "your-subscription-id"
+dotnet user-secrets set "Azure:ResourceGroupPrefix" "myapp"
+dotnet user-secrets set "Azure:Location" "eastus"
+```
+
+## Usage
+
+### Add Service Bus Namespace
+
+In your AppHost project (`AppHost.cs`):
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var serviceBus = builder.AddAzureServiceBus("messaging");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(serviceBus);
+
+builder.Build().Run();
+```
+
+### Consume in Service
+
+In your service project:
+
+```bash
+dotnet add package Aspire.Azure.Messaging.ServiceBus
+```
+
+Then in `Program.cs`:
+
+```csharp
+builder.AddAzureServiceBusClient("messaging");
+```
+
+## API Reference
+
+### AddAzureServiceBus
+
+Adds an Azure Service Bus namespace resource to the application model.
+
+```csharp
+public static IResourceBuilder<AzureServiceBusResource> AddAzureServiceBus(
+    this IDistributedApplicationBuilder builder,
+    string name)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+
+#### Returns
+
+A reference to the `IResourceBuilder<AzureServiceBusResource>`.
+
+### AddQueue
+
+Adds a queue to the Service Bus namespace.
+
+```csharp
+public static IResourceBuilder<AzureServiceBusQueueResource> AddQueue(
+    this IResourceBuilder<AzureServiceBusResource> builder,
+    string name,
+    string? queueName = null)
+```
+
+### AddTopic
+
+Adds a topic to the Service Bus namespace.
+
+```csharp
+public static IResourceBuilder<AzureServiceBusTopicResource> AddTopic(
+    this IResourceBuilder<AzureServiceBusResource> builder,
+    string name,
+    string? topicName = null)
+```
+
+### AddSubscription
+
+Adds a subscription to a Service Bus topic.
+
+```csharp
+public static IResourceBuilder<AzureServiceBusSubscriptionResource> AddSubscription(
+    this IResourceBuilder<AzureServiceBusTopicResource> builder,
+    string name,
+    string? subscriptionName = null)
+```
+
+## Configuration Examples
+
+### Using the Emulator
+
+For local development, use the Azure Service Bus emulator:
+
+```csharp
+var serviceBus = builder.AddAzureServiceBus("messaging")
+                        .RunAsEmulator();
+```
+
+<Note>
+The Service Bus emulator requires Docker and provides local queue and topic functionality for development.
+</Note>
+
+### Adding Queues
+
+```csharp
+var serviceBus = builder.AddAzureServiceBus("messaging");
+var ordersQueue = serviceBus.AddQueue("orders");
+var notificationsQueue = serviceBus.AddQueue("notifications");
+
+var orderProcessor = builder.AddProject<Projects.OrderProcessor>("processor")
+                            .WithReference(ordersQueue);
+
+var notifier = builder.AddProject<Projects.Notifier>("notifier")
+                      .WithReference(notificationsQueue);
+```
+
+### Adding Topics and Subscriptions
+
+```csharp
+var serviceBus = builder.AddAzureServiceBus("messaging");
+var ordersTopic = serviceBus.AddTopic("orders");
+var inventorySub = ordersTopic.AddSubscription("inventory");
+var shippingSub = ordersTopic.AddSubscription("shipping");
+
+var inventoryService = builder.AddProject<Projects.Inventory>("inventory")
+                              .WithReference(inventorySub);
+
+var shippingService = builder.AddProject<Projects.Shipping>("shipping")
+                             .WithReference(shippingSub);
+```
+
+### Multiple Queues and Topics
+
+```csharp
+var serviceBus = builder.AddAzureServiceBus("messaging");
+
+// Queues
+var commandQueue = serviceBus.AddQueue("commands");
+var deadLetterQueue = serviceBus.AddQueue("deadletter");
+
+// Topics
+var eventsTopic = serviceBus.AddTopic("events");
+var auditSub = eventsTopic.AddSubscription("audit");
+var analyticsSub = eventsTopic.AddSubscription("analytics");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(commandQueue)
+                 .WithReference(eventsTopic);
+
+var auditService = builder.AddProject<Projects.Audit>("audit")
+                          .WithReference(auditSub);
+```
+
+## Connection Properties
+
+When you reference Azure Service Bus resources using `WithReference`, the following connection properties are made available to the consuming project.
+
+### Service Bus Namespace
+
+| Property Name | Description |
+|---------------|-------------|
+| `Host` | The hostname of the Service Bus namespace |
+| `Port` | The port of the Service Bus namespace when the emulator is used |
+| `Uri` | The connection URI, with the format `sb://myservicebus.servicebus.windows.net` |
+| `ConnectionString` | **Emulator only.** Includes SAS key material for the local emulator connection. |
+
+### Service Bus Queue
+
+The Service Bus queue resource inherits all properties from its parent Service Bus namespace and adds:
+
+| Property Name | Description |
+|---------------|-------------|
+| `QueueName` | The name of the queue |
+
+### Service Bus Topic
+
+The Service Bus topic resource inherits all properties from its parent Service Bus namespace and adds:
+
+| Property Name | Description |
+|---------------|-------------|
+| `TopicName` | The name of the topic |
+
+### Service Bus Subscription
+
+The Service Bus subscription resource inherits all properties from its parent Service Bus topic and adds:
+
+| Property Name | Description |
+|---------------|-------------|
+| `SubscriptionName` | The name of the subscription |
+| `ConnectionString` | The connection string for the subscription |
+
+### Environment Variables
+
+Aspire exposes each property as an environment variable named `[RESOURCE]_[PROPERTY]`. For instance:
+
+- The `Uri` property of a resource called `messaging` becomes `MESSAGING_URI`
+- The `QueueName` property becomes `MESSAGING_QUEUENAME`
+
+## Deployment
+
+### Local Development with Emulator
+
+```csharp
+var serviceBus = builder.AddAzureServiceBus("messaging")
+                        .RunAsEmulator();
+
+var queue = serviceBus.AddQueue("orders");
+```
+
+### Development with Azure Resources
+
+```csharp
+var serviceBus = builder.AddAzureServiceBus("messaging");
+var queue = serviceBus.AddQueue("orders");
+```
+
+Resources are automatically provisioned when you run the AppHost.
+
+### Production Deployment
+
+Use Azure Developer CLI to deploy:
+
+```bash
+azd up
+```
+
+## Common Patterns
+
+### Environment-Specific Configuration
+
+```csharp
+var serviceBus = builder.AddAzureServiceBus("messaging");
+
+if (builder.Environment.IsDevelopment())
+{
+    serviceBus.RunAsEmulator();
+}
+
+var queue = serviceBus.AddQueue("orders");
+```
+
+### Command Queue Pattern
+
+```csharp
+var serviceBus = builder.AddAzureServiceBus("messaging");
+var commandQueue = serviceBus.AddQueue("commands");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(commandQueue);
+
+var worker = builder.AddProject<Projects.Worker>("worker")
+                    .WithReference(commandQueue);
+```
+
+In the API (sender):
+
+```csharp
+builder.AddAzureServiceBusClient("commands");
+
+public class OrderController(ServiceBusClient client)
+{
+    public async Task CreateOrder(Order order)
+    {
+        var sender = client.CreateSender("commands");
+        await sender.SendMessageAsync(new ServiceBusMessage(JsonSerializer.Serialize(order)));
+    }
+}
+```
+
+In the worker (receiver):
+
+```csharp
+builder.AddAzureServiceBusClient("commands");
+
+public class OrderProcessor(ServiceBusClient client)
+{
+    public async Task ProcessMessages()
+    {
+        var processor = client.CreateProcessor("commands");
+        processor.ProcessMessageAsync += MessageHandler;
+        await processor.StartProcessingAsync();
+    }
+}
+```
+
+### Pub/Sub Pattern with Topics
+
+```csharp
+var serviceBus = builder.AddAzureServiceBus("messaging");
+var ordersTopic = serviceBus.AddTopic("order-events");
+var inventorySub = ordersTopic.AddSubscription("inventory-subscriber");
+var shippingSub = ordersTopic.AddSubscription("shipping-subscriber");
+var analyticsSub = ordersTopic.AddSubscription("analytics-subscriber");
+
+var orderService = builder.AddProject<Projects.OrderService>("orders")
+                          .WithReference(ordersTopic);
+
+var inventoryService = builder.AddProject<Projects.Inventory>("inventory")
+                              .WithReference(inventorySub);
+
+var shippingService = builder.AddProject<Projects.Shipping>("shipping")
+                             .WithReference(shippingSub);
+
+var analytics = builder.AddProject<Projects.Analytics>("analytics")
+                       .WithReference(analyticsSub);
+```
+
+## Additional Resources
+
+- [Azure Service Bus Documentation](https://learn.microsoft.com/azure/service-bus-messaging/)
+- [Azure Service Bus .NET Client Library](https://github.com/Azure/azure-sdk-for-net/blob/main/sdk/servicebus/Azure.Messaging.ServiceBus/README.md)
+- [Aspire Azure Service Bus Client Integration](/components/azure-service-bus)

@@ -1,0 +1,425 @@
+---
+title: Environment Variables
+description: Learn how to manage environment variables in .NET Aspire applications
+---
+
+Environment variables are the primary way to pass configuration and connection information to resources in .NET Aspire. Aspire provides powerful methods to set, inject, and manage environment variables across your distributed application.
+
+## Setting Environment Variables
+
+Use the `WithEnvironment` method to set environment variables on any resource:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Production")
+                 .WithEnvironment("Logging__LogLevel__Default", "Information");
+```
+
+### Static Values
+
+Set simple string values:
+
+```csharp
+var app = builder.AddContainer("myapp", "myimage")
+                 .WithEnvironment("NODE_ENV", "production")
+                 .WithEnvironment("PORT", "3000")
+                 .WithEnvironment("API_TIMEOUT", "30000");
+```
+
+### From Configuration
+
+Use values from the AppHost configuration:
+
+```csharp
+var apiKey = builder.Configuration["ExternalApi:ApiKey"];
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment("ExternalApi__ApiKey", apiKey);
+```
+
+<Note>
+  Configuration keys use `:` as a separator, but environment variables use `__` (double underscore). The configuration system automatically handles this conversion.
+</Note>
+
+### From Parameters
+
+Use parameters for deployment-time configuration:
+
+```csharp
+var apiKey = builder.AddParameter("api-key", secret: true);
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment("ApiKey", apiKey);
+```
+
+The parameter value is resolved at startup and injected as an environment variable.
+
+## Dynamic Environment Variables
+
+Use callbacks for dynamic or computed values:
+
+### Simple Callback
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment("STARTUP_TIME", () => DateTime.UtcNow.ToString("o"));
+```
+
+### Context-Aware Callback
+
+Access execution context and other resources:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment(context =>
+                 {
+                     context.EnvironmentVariables["ASPNETCORE_ENVIRONMENT"] = 
+                         context.ExecutionContext.IsPublishMode ? "Production" : "Development";
+                     
+                     context.EnvironmentVariables["LOG_LEVEL"] = 
+                         context.ExecutionContext.IsRunMode ? "Debug" : "Information";
+                 });
+```
+
+### Async Callbacks
+
+Use async callbacks for values that require I/O:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment(async context =>
+                 {
+                     var value = await GetConfigFromExternalServiceAsync();
+                     context.EnvironmentVariables["EXTERNAL_CONFIG"] = value;
+                 });
+```
+
+## Reference Expressions
+
+Reference expressions create dynamic values that reference other resources:
+
+### Endpoint References
+
+```csharp
+var backend = builder.AddProject<Projects.Backend>("backend")
+                     .WithHttpEndpoint(port: 8080, name: "http");
+
+var frontend = builder.AddNpmApp("frontend", "./frontend")
+                      .WithEnvironment("VITE_API_URL", backend.GetEndpoint("http"));
+```
+
+This injects the endpoint URL at runtime:
+
+```bash
+VITE_API_URL=http://localhost:8080
+```
+
+### Connection String References
+
+```csharp
+var db = builder.AddPostgres("postgres")
+                .AddDatabase("catalogdb");
+
+var migrator = builder.AddExecutable("migrator", "dotnet", "./migrator")
+                      .WithEnvironment("ConnectionStrings__Default", db);
+```
+
+### Custom Reference Expressions
+
+Build complex expressions using string interpolation:
+
+```csharp
+var redis = builder.AddRedis("cache");
+var endpoint = redis.GetEndpoint("tcp");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment("REDIS_URL", $"redis://{endpoint}");
+```
+
+Or use `ReferenceExpression.Create`:
+
+```csharp
+var redis = builder.AddRedis("cache");
+var endpoint = redis.GetEndpoint("tcp");
+
+var connectionString = ReferenceExpression.Create(
+    $"redis://{endpoint},ssl=true,password=secret"
+);
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment("REDIS_CONNECTION", connectionString);
+```
+
+## Automatic Environment Variable Injection
+
+When you use `WithReference`, Aspire automatically injects environment variables based on the referenced resource type:
+
+### Connection Strings
+
+```csharp
+var db = builder.AddPostgres("postgres")
+                .AddDatabase("catalogdb");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(db);
+```
+
+Automatically injects:
+
+```bash
+ConnectionStrings__catalogdb=Host=localhost;Port=5432;Database=catalogdb;Username=postgres;Password=...
+```
+
+### Service Discovery
+
+```csharp
+var backend = builder.AddProject<Projects.Backend>("backend");
+
+var frontend = builder.AddProject<Projects.Frontend>("frontend")
+                      .WithReference(backend);
+```
+
+Automatically injects:
+
+```bash
+services__backend__http__0=http://localhost:5000
+BACKEND_HTTP=http://localhost:5000
+```
+
+### Connection Properties
+
+For databases and other resources with structured connection information:
+
+```csharp
+var db = builder.AddPostgres("postgres")
+                .AddDatabase("catalogdb");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(db);
+```
+
+Injects both the connection string and individual properties:
+
+```bash
+ConnectionStrings__catalogdb=Host=localhost;Port=5432;...
+CATALOGDB_HOST=localhost
+CATALOGDB_PORT=5432
+CATALOGDB_DATABASE=catalogdb
+```
+
+### Controlling Injection
+
+Control what gets injected using `WithReferenceEnvironment`:
+
+```csharp
+var cache = builder.AddRedis("cache");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReferenceEnvironment(ReferenceEnvironmentInjectionFlags.ServiceDiscovery)
+                 .WithReference(cache);
+```
+
+This only injects service discovery variables, skipping endpoints and connection strings.
+
+See [Dependencies](/guides/dependencies) for more details.
+
+## Container-Specific Considerations
+
+### Container Networking
+
+When a container references another resource, Aspire rewrites `localhost` to the appropriate container hostname:
+
+```csharp
+var backend = builder.AddProject<Projects.Backend>("backend");
+
+var nginx = builder.AddContainer("nginx", "nginx")
+                   .WithReference(backend);
+```
+
+Inside the nginx container:
+
+```bash
+# Instead of localhost, uses the container name:
+services__backend__http__0=http://backend:5000
+```
+
+### Volume and Mount Paths
+
+Environment variables can reference volume paths:
+
+```csharp
+var app = builder.AddContainer("myapp", "myimage")
+                 .WithVolume("app-data", "/data")
+                 .WithEnvironment("DATA_PATH", "/data");
+```
+
+## Environment Variable Naming
+
+Aspire follows .NET configuration conventions:
+
+### Hierarchical Keys
+
+Use `__` (double underscore) to separate levels:
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithEnvironment("Logging__LogLevel__Default", "Information")
+                 .WithEnvironment("ConnectionStrings__Database", connectionString);
+```
+
+This becomes:
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information"
+    }
+  },
+  "ConnectionStrings": {
+    "Database": "..."
+  }
+}
+```
+
+### Special Prefixes
+
+- `ConnectionStrings__*` - Connection strings
+- `ASPNETCORE_*` - ASP.NET Core configuration
+- `DOTNET_*` - .NET runtime configuration
+- `OTEL_*` - OpenTelemetry configuration
+
+### Name Encoding
+
+Resource and endpoint names are encoded for environment variables:
+
+```csharp
+var db = builder.AddPostgres("my-database");
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(db);
+```
+
+The `-` is encoded to `_`:
+
+```bash
+MY_DATABASE_TCP=localhost:5432
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Parameters for Secrets" icon="key">
+    Always use parameters with `secret: true` for sensitive values:
+    
+    ```csharp
+    var apiKey = builder.AddParameter("api-key", secret: true);
+    var api = builder.AddProject<Projects.Api>("api")
+                     .WithEnvironment("ApiKey", apiKey);
+    ```
+  </Card>
+  
+  <Card title="Hierarchical Naming" icon="sitemap">
+    Use hierarchical names with `__` for better organization:
+    
+    ```csharp
+    .WithEnvironment("ExternalServices__Payment__ApiKey", apiKey)
+    .WithEnvironment("ExternalServices__Payment__BaseUrl", baseUrl)
+    ```
+  </Card>
+  
+  <Card title="Reference Expressions" icon="link">
+    Use reference expressions instead of hardcoded values:
+    
+    ```csharp
+    // Good
+    .WithEnvironment("API_URL", backend.GetEndpoint("http"))
+    
+    // Avoid
+    .WithEnvironment("API_URL", "http://localhost:8080")
+    ```
+  </Card>
+  
+  <Card title="Environment-Specific Values" icon="layer-group">
+    Use callbacks for environment-specific configuration:
+    
+    ```csharp
+    .WithEnvironment(ctx => {
+        ctx.EnvironmentVariables["LOG_LEVEL"] = 
+            ctx.ExecutionContext.IsPublishMode ? "Warning" : "Debug";
+    })
+    ```
+  </Card>
+</CardGroup>
+
+## Debugging Environment Variables
+
+View environment variables in the Aspire Dashboard:
+
+1. Start your application
+2. Open the dashboard
+3. Click on a resource
+4. View the **Environment** tab
+
+You can see all environment variables that were injected into the resource, with secrets masked.
+
+## Common Patterns
+
+<AccordionGroup>
+  <Accordion title="Database Connection">
+    ```csharp
+    var db = builder.AddPostgres("postgres")
+                    .AddDatabase("mydb");
+    
+    var api = builder.AddProject<Projects.Api>("api")
+                     .WithReference(db);
+    
+    // Connection string automatically available as:
+    // ConnectionStrings__mydb
+    ```
+  </Accordion>
+  
+  <Accordion title="Service-to-Service Communication">
+    ```csharp
+    var backend = builder.AddProject<Projects.Backend>("backend");
+    
+    var frontend = builder.AddNpmApp("frontend", "./frontend")
+                          .WithEnvironment("VITE_API_URL", backend.GetEndpoint("http"));
+    ```
+  </Accordion>
+  
+  <Accordion title="External API Configuration">
+    ```csharp
+    var apiKey = builder.AddParameter("external-api-key", secret: true);
+    var apiUrl = builder.Configuration["ExternalApi:BaseUrl"];
+    
+    var api = builder.AddProject<Projects.Api>("api")
+                     .WithEnvironment("ExternalApi__ApiKey", apiKey)
+                     .WithEnvironment("ExternalApi__BaseUrl", apiUrl);
+    ```
+  </Accordion>
+  
+  <Accordion title="Feature Flags">
+    ```csharp
+    var api = builder.AddProject<Projects.Api>("api")
+                     .WithEnvironment(context =>
+                     {
+                         var config = context.ExecutionContext.ServiceProvider
+                             .GetRequiredService<IConfiguration>();
+                         
+                         context.EnvironmentVariables["Features__EnableBeta"] = 
+                             config.GetValue<bool>("Features:EnableBeta").ToString();
+                     });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Learn about configuration management
+  </Card>
+  <Card title="Dependencies" icon="link" href="/guides/dependencies">
+    Wire dependencies with WithReference
+  </Card>
+</CardGroup>

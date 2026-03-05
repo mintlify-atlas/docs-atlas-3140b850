@@ -1,0 +1,293 @@
+---
+title: Hosting Basics
+description: Learn the basics of the Aspire.Hosting library and creating an AppHost
+---
+
+The .NET Aspire app model is a code-first approach to defining and orchestrating your distributed application. At the heart of this model is the **AppHost** project, which uses the `Aspire.Hosting` library to describe your application's resources and their relationships.
+
+## Understanding the AppHost
+
+The AppHost is the orchestrator for your .NET Aspire application. It's a console application that:
+
+- Defines all resources (projects, containers, databases, etc.)
+- Describes dependencies between resources
+- Configures service discovery
+- Manages the application lifecycle
+
+### Basic AppHost Structure
+
+Every AppHost follows this basic structure:
+
+```csharp Program.cs
+var builder = DistributedApplication.CreateBuilder(args);
+
+// Add resources here
+var cache = builder.AddRedis("cache");
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(cache);
+
+builder.Build().Run();
+```
+
+<Steps>
+
+### Create the builder
+
+The `DistributedApplication.CreateBuilder()` method creates an instance of `IDistributedApplicationBuilder`, which provides the foundation for defining your application:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+```
+
+**Why pass `args`?** The command-line arguments are essential for deployment tools to communicate with the AppHost. Always pass `args` from your `Main` method or top-level statements.
+
+### Add resources
+
+Use extension methods on the builder to add resources to your application:
+
+```csharp
+// Add a Redis container
+var cache = builder.AddRedis("cache");
+
+// Add a PostgreSQL server with a database
+var db = builder.AddPostgres("postgres")
+                .AddDatabase("catalogdb");
+
+// Add a .NET project
+var api = builder.AddProject<Projects.Api>("api");
+```
+
+Each `Add*` method returns an `IResourceBuilder<T>` that you can use to further configure the resource.
+
+### Build and run
+
+Finally, build the application and start it:
+
+```csharp
+builder.Build().Run();
+```
+
+This starts the Aspire dashboard and all defined resources.
+
+</Steps>
+
+## Builder Configuration Options
+
+You can customize the builder's behavior using `DistributedApplicationOptions`:
+
+```csharp
+var options = new DistributedApplicationOptions
+{
+    Args = args,
+    DisableDashboard = false,
+    AllowUnsecuredTransport = false,
+    ContainerRegistryOverride = "myregistry.azurecr.io"
+};
+
+var builder = DistributedApplication.CreateBuilder(options);
+```
+
+### Common Options
+
+<AccordionGroup>
+  <Accordion title="DisableDashboard">
+    Disables the Aspire dashboard. Useful for headless scenarios or CI/CD environments.
+    
+    ```csharp
+    var options = new DistributedApplicationOptions
+    {
+        Args = args,
+        DisableDashboard = true
+    };
+    ```
+  </Accordion>
+  
+  <Accordion title="AllowUnsecuredTransport">
+    Allows unsecured HTTP communication with the dashboard. Only use for development.
+    
+    ```csharp
+    var options = new DistributedApplicationOptions
+    {
+        Args = args,
+        AllowUnsecuredTransport = true
+    };
+    ```
+  </Accordion>
+  
+  <Accordion title="ContainerRegistryOverride">
+    Forces all container images to be pulled from a specific registry.
+    
+    ```csharp
+    var options = new DistributedApplicationOptions
+    {
+        Args = args,
+        ContainerRegistryOverride = "myregistry.azurecr.io"
+    };
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Accessing Services
+
+The `IDistributedApplicationBuilder` exposes properties for customizing the application:
+
+<CodeGroup>
+
+```csharp Configuration
+// Access configuration
+var connectionString = builder.Configuration["MyService:ConnectionString"];
+
+// Add configuration sources
+builder.Configuration.AddJsonFile("appsettings.local.json", optional: true);
+```
+
+```csharp Services
+// Register additional services
+builder.Services.AddSingleton<IMyCustomService, MyCustomService>();
+
+// Configure options
+builder.Services.Configure<MyOptions>(builder.Configuration.GetSection("MyOptions"));
+```
+
+```csharp Environment
+// Access environment information
+var env = builder.Environment;
+if (env.IsDevelopment())
+{
+    // Development-specific configuration
+}
+```
+
+</CodeGroup>
+
+## Execution Modes
+
+The AppHost can run in different modes depending on how it's invoked:
+
+### Run Mode
+
+Normal execution mode where the AppHost starts all resources and the dashboard:
+
+```bash
+dotnet run
+```
+
+You can check the execution mode programmatically:
+
+```csharp
+if (builder.ExecutionContext.IsRunMode)
+{
+    // Only execute in run mode
+}
+```
+
+### Publish Mode
+
+Generates deployment manifests for publishing to cloud environments:
+
+```bash
+dotnet run --publisher manifest
+```
+
+Check for publish mode:
+
+```csharp
+if (builder.ExecutionContext.IsPublishMode)
+{
+    // Only execute during manifest generation
+}
+```
+
+## Resource Lifecycle
+
+The `DistributedApplication` implements the standard .NET `IHost` interface, which means it follows the host lifecycle:
+
+```csharp
+var app = builder.Build();
+
+// Option 1: Blocking call
+app.Run();
+
+// Option 2: Async with cancellation
+await app.RunAsync(cancellationToken);
+
+// Option 3: Start/Stop manually
+await app.StartAsync();
+// ... do work ...
+await app.StopAsync();
+```
+
+### Monitoring Resource State
+
+You can monitor and react to resource state changes:
+
+```csharp
+var app = builder.Build();
+
+// Wait for a resource to be ready
+await app.ResourceNotifications.WaitForResourceHealthyAsync("postgres");
+
+// Monitor all resource state changes
+await foreach (var update in app.ResourceNotifications.WatchAsync(cancellationToken))
+{
+    Console.WriteLine($"Resource {update.Resource.Name}: {update.Snapshot.State?.Text}");
+}
+```
+
+## AppHost Project Structure
+
+A typical AppHost project has this structure:
+
+```
+MyApp.AppHost/
+├── Program.cs              # Main application definition
+├── MyApp.AppHost.csproj    # Project file
+├── appsettings.json        # Optional configuration
+└── .aspire/                # Local state (generated)
+```
+
+### Project File Requirements
+
+The AppHost project file must:
+
+1. Target `net10.0` or later
+2. Set `IsAspireHost` to `true`
+3. Reference the `Aspire.Hosting.AppHost` package
+
+```xml MyApp.AppHost.csproj
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsAspireHost>true</IsAspireHost>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.AppHost" Version="10.0.0" />
+  </ItemGroup>
+
+  <!-- Reference your projects -->
+  <ItemGroup>
+    <ProjectReference Include="..\MyApp.Api\MyApp.Api.csproj" />
+  </ItemGroup>
+</Project>
+```
+
+## Next Steps
+
+Now that you understand the basics of the AppHost, learn how to:
+
+<CardGroup cols={2}>
+  <Card title="Define Resources" icon="cube" href="/guides/resources">
+    Learn about containers, projects, and executables
+  </Card>
+  <Card title="Wire Dependencies" icon="link" href="/guides/dependencies">
+    Connect resources using WithReference
+  </Card>
+  <Card title="Manage Configuration" icon="gear" href="/guides/configuration">
+    Configure your resources and services
+  </Card>
+  <Card title="Set Environment Variables" icon="list" href="/guides/environment-variables">
+    Pass configuration to your resources
+  </Card>
+</CardGroup>

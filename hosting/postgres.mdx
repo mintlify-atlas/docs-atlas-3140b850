@@ -1,0 +1,205 @@
+---
+title: PostgreSQL Hosting Integration
+description: Add PostgreSQL database resources to your .NET Aspire application
+---
+
+The .NET Aspire PostgreSQL hosting integration provides extension methods for adding PostgreSQL server and database resources to your distributed application.
+
+## Installation
+
+Install the PostgreSQL hosting integration package in your AppHost project:
+
+```bash
+dotnet add package Aspire.Hosting.PostgreSQL
+```
+
+## Usage
+
+### Add PostgreSQL Server and Database
+
+In your AppHost project (`AppHost.cs`), add a PostgreSQL server and database:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var postgres = builder.AddPostgres("postgres")
+                      .AddDatabase("mydb");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(postgres);
+
+builder.Build().Run();
+```
+
+### Consume in Service
+
+In your service project, reference the database using the client integration:
+
+```bash
+dotnet add package Aspire.Npgsql
+```
+
+Then in `Program.cs`:
+
+```csharp
+builder.AddNpgsqlDataSource("mydb");
+```
+
+## API Reference
+
+### AddPostgres
+
+Adds a PostgreSQL server resource to the application model. A container is used for local development.
+
+```csharp
+public static IResourceBuilder<PostgresServerResource> AddPostgres(
+    this IDistributedApplicationBuilder builder,
+    string name,
+    IResourceBuilder<ParameterResource>? userName = null,
+    IResourceBuilder<ParameterResource>? password = null,
+    int? port = null)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+- `userName` - The parameter used to provide the user name for the PostgreSQL resource. If `null` a default value will be used.
+- `password` - The parameter used to provide the administrator password for the PostgreSQL resource. If `null` a random password will be generated.
+- `port` - The host port used when launching the container. If null a random port will be assigned.
+
+#### Returns
+
+A reference to the `IResourceBuilder<PostgresServerResource>`.
+
+### AddDatabase
+
+Adds a PostgreSQL database to the application model.
+
+```csharp
+public static IResourceBuilder<PostgresDatabaseResource> AddDatabase(
+    this IResourceBuilder<PostgresServerResource> builder,
+    string name,
+    string? databaseName = null)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+- `databaseName` - The name of the database. If not provided, defaults to the same value as `name`.
+
+## Configuration Examples
+
+### Custom Port
+
+```csharp
+var postgres = builder.AddPostgres("postgres", port: 5432);
+```
+
+### Custom Password
+
+```csharp
+var password = builder.AddParameter("postgres-password", secret: true);
+var postgres = builder.AddPostgres("postgres", password: password);
+```
+
+### Data Persistence with Volumes
+
+```csharp
+var postgres = builder.AddPostgres("postgres")
+                      .WithDataVolume();
+```
+
+### Multiple Databases
+
+```csharp
+var postgres = builder.AddPostgres("postgres");
+var catalogDb = postgres.AddDatabase("catalog");
+var identityDb = postgres.AddDatabase("identity");
+
+var catalogService = builder.AddProject<Projects.CatalogService>("catalog")
+                            .WithReference(catalogDb);
+
+var identityService = builder.AddProject<Projects.IdentityService>("identity")
+                             .WithReference(identityDb);
+```
+
+### PgAdmin Management Tool
+
+```csharp
+var postgres = builder.AddPostgres("postgres")
+                      .WithPgAdmin();
+```
+
+### Named Volumes
+
+```csharp
+var postgres = builder.AddPostgres("postgres")
+                      .WithDataVolume("myapp-postgres-data");
+```
+
+### Bind Mounts
+
+```csharp
+var postgres = builder.AddPostgres("postgres")
+                      .WithDataBindMount("./postgres-data");
+```
+
+## Connection Properties
+
+When you reference a PostgreSQL resource using `WithReference`, the following connection properties are made available to the consuming project.
+
+### PostgreSQL Server
+
+| Property Name | Description |
+|---------------|-------------|
+| `Host` | The hostname or IP address of the PostgreSQL server |
+| `Port` | The port number the PostgreSQL server is listening on |
+| `Username` | The username for authentication |
+| `Password` | The password for authentication |
+| `Uri` | The connection URI in postgresql:// format, with the format `postgresql://{Username}:{Password}@{Host}:{Port}` |
+| `JdbcConnectionString` | JDBC-format connection string, with the format `jdbc:postgresql://{Host}:{Port}`. User and password credentials are provided as separate `Username` and `Password` properties. |
+
+### PostgreSQL Database
+
+The PostgreSQL database resource inherits all properties from its parent `PostgresServerResource` and adds:
+
+| Property Name | Description |
+|---------------|-------------|
+| `Uri` | The connection URI with the database name, with the format `postgresql://{Username}:{Password}@{Host}:{Port}/{DatabaseName}` |
+| `JdbcConnectionString` | JDBC connection string with database name, with the format `jdbc:postgresql://{Host}:{Port}/{DatabaseName}`. User and password credentials are provided as separate `Username` and `Password` properties. |
+| `DatabaseName` | The name of the database |
+
+### Environment Variables
+
+Aspire exposes each property as an environment variable named `[RESOURCE]_[PROPERTY]`. For instance:
+
+- The `Uri` property of a resource called `mydb` becomes `MYDB_URI`
+- The `DatabaseName` property becomes `MYDB_DATABASENAME`
+
+## MCP (Model Context Protocol) Support
+
+The PostgreSQL hosting integration provides support for adding an MCP sidecar container that enables AI agents to interact with PostgreSQL databases.
+
+```csharp
+var db = builder.AddPostgres("postgres")
+                .AddDatabase("mydb")
+                .WithPostgresMcp();
+```
+
+The PostgreSQL MCP server is powered by [Postgres MCP Pro](https://github.com/crystaldba/postgres-mcp) and provides tools for database exploration, query execution, index tuning, and health checks.
+
+## Health Checks
+
+The PostgreSQL hosting integration includes built-in health checks. When a resource is referenced as a dependency using `WaitFor`, the dependent resource will wait until the PostgreSQL resource is able to service requests.
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(postgres)
+                 .WaitFor(postgres);
+```
+
+## Additional Resources
+
+- [PostgreSQL Official Documentation](https://www.postgresql.org/docs/)
+- [Npgsql - .NET Data Provider for PostgreSQL](https://www.npgsql.org/)
+- [Aspire PostgreSQL Client Integration](/components/npgsql)

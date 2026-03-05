@@ -1,0 +1,280 @@
+---
+title: Application Model
+description: Understand the Aspire application model, resources, and fluent APIs for building distributed applications
+---
+
+The .NET Aspire application model is a code-first approach to defining the services, infrastructure, and dependencies that make up your distributed application. At its core, the app model provides a fluent API for describing resources and their relationships in a structured, type-safe way.
+
+## Core Concepts
+
+The application model is built around three fundamental concepts:
+
+- **Resources**: The building blocks of your application (projects, containers, databases, etc.)
+- **Builders**: Fluent APIs for configuring resources and their relationships
+- **References**: Connections between resources that establish dependencies
+
+### What is a Resource?
+
+In Aspire, a **resource** represents any component that makes up your distributed application. Resources are pure data objects that describe capabilities, configuration, and relationships—they don't manage their own lifecycle.
+
+Resources implement the `IResource` interface and are identified by a unique name within the application graph:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var cache = builder.AddRedis("cache");
+var db = builder.AddPostgres("postgres")
+                 .AddDatabase("catalogdb");
+var api = builder.AddProject<Projects.CatalogService>("catalogservice")
+                 .WithReference(db);
+```
+
+### Built-in Resource Types
+
+Aspire provides several fundamental resource types:
+
+| Resource Type | Purpose | Example |
+|--------------|---------|----------|
+| `ProjectResource` | .NET projects | `AddProject<Projects.MyApi>("api")` |
+| `ContainerResource` | Docker containers | `AddContainer("redis", "redis")` |
+| `ExecutableResource` | Arbitrary executables | `AddExecutable("tool", "python")` |
+
+Specialized resources like Redis, PostgreSQL, and RabbitMQ are built on top of these primitives through extension methods.
+
+## Fluent Configuration API
+
+Resources are configured using a fluent API pattern. Extension methods like `AddRedis`, `AddPostgres`, or `AddProject` encapsulate:
+
+- Resource construction and registration
+- Attachment of metadata (annotations)
+- Default configuration
+- Relationship wiring
+
+### Example: Complete AppHost Configuration
+
+Here's a real-world example from the TestShop playground application:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+// Add PostgreSQL database with admin UI
+var catalogDb = builder.AddPostgres("postgres")
+                       .WithDataVolume()
+                       .WithPgAdmin()
+                       .AddDatabase("catalogdb");
+
+// Add Redis cache with data persistence
+var basketCache = builder.AddRedis("basketcache")
+                         .WithDataVolume();
+
+// Add .NET project with database dependency
+var catalogService = builder.AddProject<Projects.CatalogService>("catalogservice")
+                            .WithReference(catalogDb)
+                            .WithReplicas(2);
+
+// Add RabbitMQ messaging
+var messaging = builder.AddRabbitMQ("messaging")
+                       .WithDataVolume()
+                       .WithManagementPlugin();
+
+// Add basket service with multiple dependencies
+var basketService = builder.AddProject("basketservice", @"..\BasketService\BasketService.csproj")
+                           .WithReference(basketCache)
+                           .WithReference(messaging)
+                           .WaitFor(messaging);
+
+// Add frontend with service references
+var frontend = builder.AddProject<Projects.MyFrontend>("frontend")
+                      .WithExternalHttpEndpoints()
+                      .WithReference(basketService)
+                      .WithReference(catalogService);
+
+builder.Build().Run();
+```
+
+## Resource Annotations
+
+Annotations are the primary extensibility mechanism in Aspire. They attach metadata to resources without modifying core classes.
+
+Annotations enable:
+- Service discovery configuration
+- Environment variable injection
+- Health check definitions
+- Custom behaviors
+
+Example of how annotations work internally:
+
+```csharp
+// When you call .WithEnvironment("KEY", "value")
+public static IResourceBuilder<T> WithEnvironment<T>(
+    this IResourceBuilder<T> builder,
+    string name,
+    string value) where T : IResourceWithEnvironment
+{
+    return builder.WithAnnotation(
+        new EnvironmentCallbackAnnotation(context => 
+            context.EnvironmentVariables[name] = value
+        )
+    );
+}
+```
+
+## Standard Interfaces
+
+Resources declare capabilities through optional interfaces that enable dynamic wiring and orchestration:
+
+| Interface | Purpose | Example Usage |
+|-----------|---------|---------------|
+| `IResourceWithEnvironment` | Supports environment variables | `.WithEnvironment("KEY", "value")` |
+| `IResourceWithServiceDiscovery` | Enables service discovery | `.WithReference(otherService)` |
+| `IResourceWithEndpoints` | Exposes network endpoints | `.WithEndpoint(port: 8080)` |
+| `IResourceWithConnectionString` | Provides connection strings | Database resources |
+| `IResourceWithWaitSupport` | Can wait for dependencies | `.WaitFor(otherResource)` |
+
+### Interface Example
+
+```csharp
+// ProjectResource implements multiple capability interfaces
+public class ProjectResource : Resource, 
+    IResourceWithEnvironment,
+    IResourceWithServiceDiscovery,
+    IResourceWithEndpoints,
+    IResourceWithWaitSupport
+{
+    // Resource implementation
+}
+```
+
+## Resource References and Dependencies
+
+The `WithReference` method establishes dependencies between resources and wires configuration automatically:
+
+```csharp
+var db = builder.AddPostgres("postgres")
+                .AddDatabase("catalogdb");
+
+var api = builder.AddProject<Projects.CatalogService>("catalogservice")
+                 .WithReference(db);
+```
+
+When you reference a database resource:
+1. Connection string is automatically injected as environment variables
+2. Service discovery information is configured
+3. Startup ordering is established (database must be ready first)
+
+### Wait Dependencies
+
+Use `.WaitFor()` to ensure a resource doesn't start until its dependency is ready:
+
+```csharp
+var messaging = builder.AddRabbitMQ("messaging");
+
+var orderProcessor = builder.AddProject<Projects.OrderProcessor>("orderprocessor")
+                            .WithReference(messaging)
+                            .WaitFor(messaging);  // Don't start until RabbitMQ is ready
+```
+
+## Environment Variables and Configuration
+
+Aspire automatically manages environment variables for service discovery and configuration:
+
+```csharp
+var redis = builder.AddRedis("basketcache");
+
+var basketService = builder.AddProject<Projects.BasketService>("basketservice")
+                           .WithReference(redis);
+```
+
+This automatically injects environment variables into the basket service:
+
+```bash
+BASKETCACHE_HOST=localhost
+BASKETCACHE_PORT=6379
+BASKETCACHE_URI=redis://localhost:6379
+```
+
+### Custom Environment Variables
+
+Add custom configuration using `WithEnvironment`:
+
+```csharp
+var api = builder.AddProject<Projects.MyApi>("api")
+                 .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+                 .WithEnvironment("MaxRetries", "3");
+```
+
+## Resource Lifecycle and State
+
+Resources progress through well-defined states during execution:
+
+| State | Meaning |
+|-------|----------|
+| `Unknown` | Default state when added to graph |
+| `Starting` | Resource is launching |
+| `Running` | Successfully started |
+| `Waiting` | Blocked waiting for dependencies |
+| `Exited` | Completed execution |
+| `FailedToStart` | Startup failed |
+
+The orchestrator manages state transitions automatically based on dependencies and health checks.
+
+## Parent-Child Relationships
+
+Resources can have hierarchical relationships for lifecycle containment and dashboard visualization:
+
+```csharp
+var postgres = builder.AddPostgres("postgres");
+var catalogDb = postgres.AddDatabase("catalogdb");  // Child of postgres
+```
+
+Child resources:
+- Start only after parent starts
+- Stop automatically when parent stops
+- Appear nested in the dashboard UI
+
+## Common Configuration Patterns
+
+### Data Persistence
+
+```csharp
+var db = builder.AddPostgres("postgres")
+                .WithDataVolume();  // Persist data across restarts
+```
+
+### External Access
+
+```csharp
+var frontend = builder.AddProject<Projects.Web>("frontend")
+                      .WithExternalHttpEndpoints();  // Allow external traffic
+```
+
+### Replicas and Scaling
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReplicas(3);  // Run 3 instances
+```
+
+### Health Checks
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithHttpHealthCheck("/health");
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Service Discovery" icon="compass" href="/concepts/service-discovery">
+    Learn how services find and communicate with each other
+  </Card>
+  <Card title="Dashboard" icon="chart-line" href="/concepts/dashboard">
+    Explore the Aspire Dashboard for monitoring your app
+  </Card>
+  <Card title="Building Apps" icon="hammer" href="/guides/hosting-basics">
+    Deep dive into building applications with Aspire
+  </Card>
+  <Card title="Resources Guide" icon="cube" href="/guides/resources">
+    Complete guide to working with resources
+  </Card>
+</CardGroup>

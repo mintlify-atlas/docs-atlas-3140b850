@@ -1,97 +1,168 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: ".NET Aspire Documentation"
+description: "Build cloud-ready, observable, production-ready distributed applications with .NET"
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-br from-[#7052db] via-[#6B46C1] to-[#5a3db8] dark:from-[#5a3db8] dark:via-[#4a2d98] dark:to-[#3a1d78] py-20">
+  <div className="max-w-6xl mx-auto px-6 lg:px-8">
+    <div className="text-center">
+      <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6">
+        Build Cloud-Ready Apps with .NET Aspire
+      </h1>
+      <p className="text-lg sm:text-xl text-white/90 max-w-3xl mx-auto mb-8">
+        A cloud-ready framework for building observable, production-ready distributed applications. Define your app model in code, orchestrate locally, and deploy anywhere.
+      </p>
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap">
+        <a
+          href="/quickstart"
+          className="inline-flex items-center justify-center px-8 py-3 text-base font-semibold text-white bg-[#7c5de8] hover:bg-[#6a4dd6] rounded-full transition-colors no-underline shadow-lg"
+        >
+          Get Started
+        </a>
+        <a
+          href="/concepts/app-model"
+          className="inline-flex items-center justify-center px-8 py-3 text-base font-semibold text-white bg-white/10 hover:bg-white/20 border border-white/30 rounded-full transition-colors no-underline backdrop-blur-sm"
+        >
+          Learn Core Concepts
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Quick Start</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Get up and running with .NET Aspire in minutes
+  </p>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+  <Steps>
+    <Step title="Install the Aspire CLI">
+      Install the Aspire CLI using the installation script for your platform:
 
-## Make it yours
+      <CodeGroup>
+        ```bash Windows (PowerShell)
+        irm https://aspire.dev/install.ps1 | iex
+        ```
 
-Design a docs site that looks great and empowers your users.
+        ```bash Linux/macOS
+        curl -sSL https://aspire.dev/install.sh | bash
+        ```
+      </CodeGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+      The CLI provides everything you need to create, run, and deploy Aspire applications.
+    </Step>
 
-## Create beautiful pages
+    <Step title="Create a new Aspire app">
+      Create your first Aspire application using the starter template:
 
-Everything you need to create world-class documentation.
+      ```bash
+      aspire init my-aspire-app
+      cd my-aspire-app
+      ```
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+      This creates a new solution with an AppHost project and a starter web application, fully configured with service defaults.
+    </Step>
 
-## Need inspiration?
+    <Step title="Run your application">
+      Launch your application with a single command:
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+      ```bash
+      aspire run
+      ```
+
+      The Aspire dashboard opens automatically, showing your running services, logs, traces, and metrics in real-time.
+
+      <Note>
+        The dashboard runs at `http://localhost:18888` by default and provides live telemetry from all your services.
+      </Note>
+    </Step>
+  </Steps>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Explore by Topic</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Learn about Aspire's core capabilities and how to use them
+  </p>
+
+  <CardGroup cols={2}>
+    <Card title="App Model" icon="diagram-project" href="/concepts/app-model">
+      Learn how Aspire models distributed applications as a graph of resources with explicit dependencies
+    </Card>
+    <Card title="Service Discovery" icon="magnifying-glass-location" href="/concepts/service-discovery">
+      Understand how services discover and communicate with each other automatically
+    </Card>
+    <Card title="Dashboard" icon="chart-line" href="/concepts/dashboard">
+      Explore the built-in dashboard for monitoring logs, traces, and metrics
+    </Card>
+    <Card title="Telemetry" icon="signal-stream" href="/concepts/telemetry">
+      Configure structured logging, distributed tracing, and metrics collection
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Integrations</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Connect to databases, messaging systems, and cloud services with 40+ integrations
+  </p>
+
+  <CardGroup cols={3}>
+    <Card title="PostgreSQL" icon="database" href="/hosting/postgres">
+      Add PostgreSQL databases to your application
+    </Card>
+    <Card title="Redis" icon="bolt" href="/hosting/redis">
+      Integrate Redis for caching and pub/sub
+    </Card>
+    <Card title="RabbitMQ" icon="message" href="/hosting/rabbitmq">
+      Use RabbitMQ for reliable messaging
+    </Card>
+    <Card title="SQL Server" icon="server" href="/hosting/sql-server">
+      Connect to SQL Server databases
+    </Card>
+    <Card title="Kafka" icon="stream" href="/hosting/kafka">
+      Build event-driven apps with Kafka
+    </Card>
+    <Card title="Azure Services" icon="cloud" href="/hosting/azure-overview">
+      Deploy and integrate with Azure
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Resources</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Additional resources to help you succeed with .NET Aspire
+  </p>
+
+  <CardGroup cols={2}>
+    <Card title="CLI Reference" icon="terminal" href="/cli/overview">
+      Complete command reference for the Aspire CLI
+    </Card>
+    <Card title="API Reference" icon="code" href="/api/distributed-application">
+      Explore the full Aspire API surface
+    </Card>
+    <Card title="GitHub Repository" icon="github" href="https://github.com/dotnet/aspire">
+      View source code, report issues, and contribute
+    </Card>
+    <Card title="Sample Applications" icon="flask" href="https://github.com/dotnet/aspire-samples">
+      Explore sample apps and patterns
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-20 mb-16 max-w-5xl mx-auto px-6">
+  <div className="bg-gradient-to-r from-[#7052db] to-[#6B46C1] dark:from-[#5a3db8] dark:to-[#4a2d98] rounded-2xl p-8 sm:p-12 text-center">
+    <h2 className="text-3xl font-bold text-white mb-4">Ready to Build?</h2>
+    <p className="text-lg text-white/90 mb-6 max-w-2xl mx-auto">
+      Start building production-ready distributed applications with .NET Aspire today
+    </p>
+    <a
+      href="/quickstart"
+      className="inline-flex items-center justify-center px-8 py-3 text-base font-semibold text-[#7052db] bg-white hover:bg-gray-50 rounded-full transition-colors no-underline shadow-lg"
+    >
+      Get Started Now
+    </a>
+  </div>
+</div>

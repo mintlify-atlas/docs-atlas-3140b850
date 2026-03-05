@@ -1,0 +1,267 @@
+---
+title: Azure Cosmos DB Hosting Integration
+description: Add Azure Cosmos DB resources to your .NET Aspire application
+---
+
+The .NET Aspire Azure Cosmos DB hosting integration provides extension methods for adding Azure Cosmos DB resources to your distributed application.
+
+## Installation
+
+Install the Azure Cosmos DB hosting integration package in your AppHost project:
+
+```bash
+dotnet add package Aspire.Hosting.Azure.CosmosDB
+```
+
+## Prerequisites
+
+- Azure subscription - [create one for free](https://azure.microsoft.com/free/)
+- Azure CLI installed and authenticated
+- Owner access to the target subscription for role assignments
+
+## Configuration
+
+Configure Azure provisioning settings in user secrets:
+
+```bash
+dotnet user-secrets set "Azure:SubscriptionId" "your-subscription-id"
+dotnet user-secrets set "Azure:ResourceGroupPrefix" "myapp"
+dotnet user-secrets set "Azure:Location" "eastus"
+```
+
+## Usage
+
+### Add Cosmos DB Account and Database
+
+In your AppHost project (`AppHost.cs`):
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var cosmos = builder.AddAzureCosmosDB("cosmos")
+                    .AddDatabase("catalogdb");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(cosmos);
+
+builder.Build().Run();
+```
+
+### Consume in Service
+
+In your service project:
+
+```bash
+dotnet add package Aspire.Microsoft.Azure.Cosmos
+```
+
+Then in `Program.cs`:
+
+```csharp
+builder.AddAzureCosmosClient("catalogdb");
+```
+
+## API Reference
+
+### AddAzureCosmosDB
+
+Adds an Azure Cosmos DB account resource to the application model.
+
+```csharp
+public static IResourceBuilder<AzureCosmosDBResource> AddAzureCosmosDB(
+    this IDistributedApplicationBuilder builder,
+    string name)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+
+#### Returns
+
+A reference to the `IResourceBuilder<AzureCosmosDBResource>`.
+
+### AddDatabase
+
+Adds a Cosmos DB database to the Cosmos DB account.
+
+```csharp
+public static IResourceBuilder<AzureCosmosDBDatabaseResource> AddDatabase(
+    this IResourceBuilder<AzureCosmosDBResource> builder,
+    string name,
+    string? databaseName = null)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+- `databaseName` - The name of the database. If not provided, defaults to the same value as `name`.
+
+## Configuration Examples
+
+### Using the Emulator
+
+For local development, use the Azure Cosmos DB emulator:
+
+```csharp
+var cosmos = builder.AddAzureCosmosDB("cosmos")
+                    .RunAsEmulator()
+                    .AddDatabase("catalogdb");
+```
+
+The emulator container will be automatically started when you run your application.
+
+### Multiple Databases
+
+```csharp
+var cosmos = builder.AddAzureCosmosDB("cosmos");
+var catalogDb = cosmos.AddDatabase("catalog");
+var orderDb = cosmos.AddDatabase("orders");
+
+var catalogService = builder.AddProject<Projects.CatalogService>("catalog")
+                            .WithReference(catalogDb);
+
+var orderService = builder.AddProject<Projects.OrderService>("orders")
+                          .WithReference(orderDb);
+```
+
+### Adding Containers
+
+Add specific containers to your database:
+
+```csharp
+var cosmos = builder.AddAzureCosmosDB("cosmos");
+var db = cosmos.AddDatabase("catalogdb");
+var container = db.AddContainer("products", "/categoryId");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(container);
+```
+
+### Access Key Authentication
+
+By default, Azure Cosmos DB uses managed identity. To use access keys:
+
+```csharp
+var cosmos = builder.AddAzureCosmosDB("cosmos")
+                    .WithAccessKeyAuthentication();
+```
+
+<Warning>
+Access keys are less secure than managed identity. Use managed identity in production environments.
+</Warning>
+
+## Connection Properties
+
+When you reference Azure Cosmos DB resources using `WithReference`, the following connection properties are made available to the consuming project.
+
+### Cosmos DB Account
+
+| Property Name | Description |
+|---------------|-------------|
+| `Uri` | The account endpoint URI for the Cosmos DB account, with the format `https://mycosmosaccount.documents.azure.com:443/` |
+| `AccountKey` | The account key for the Cosmos DB account (only available for emulator and access key authentication) |
+| `ConnectionString` | **Emulator or access key authentication only.** A full connection string (includes account key for emulator; access key secret when access key auth is enabled). |
+
+### Cosmos DB Database
+
+The Cosmos DB database resource inherits all properties from its parent Cosmos DB account and adds:
+
+| Property Name | Description |
+|---------------|-------------|
+| `DatabaseName` | The name of the database |
+
+### Cosmos DB Container
+
+The Cosmos DB container resource inherits all properties from its parent Cosmos DB database and adds:
+
+| Property Name | Description |
+|---------------|-------------|
+| `ContainerName` | The name of the container |
+
+### Environment Variables
+
+Aspire exposes each property as an environment variable named `[RESOURCE]_[PROPERTY]`. For instance:
+
+- The `Uri` property of a resource called `cosmos` becomes `COSMOS_URI`
+- The `DatabaseName` property becomes `COSMOS_DATABASENAME`
+
+## Deployment
+
+### Local Development with Emulator
+
+```csharp
+var cosmos = builder.AddAzureCosmosDB("cosmos")
+                    .RunAsEmulator()
+                    .AddDatabase("mydb");
+```
+
+### Development with Azure Resources
+
+```csharp
+var cosmos = builder.AddAzureCosmosDB("cosmos")
+                    .AddDatabase("mydb");
+```
+
+Resources are automatically provisioned when you run the AppHost.
+
+### Production Deployment
+
+Use Azure Developer CLI to deploy:
+
+```bash
+azd up
+```
+
+This provisions Azure resources and deploys your application.
+
+## Common Patterns
+
+### Environment-Specific Configuration
+
+```csharp
+var cosmos = builder.AddAzureCosmosDB("cosmos");
+
+if (builder.Environment.IsDevelopment())
+{
+    cosmos.RunAsEmulator();
+}
+
+var db = cosmos.AddDatabase("catalogdb");
+```
+
+### Multi-Container Database
+
+```csharp
+var cosmos = builder.AddAzureCosmosDB("cosmos")
+                    .RunAsEmulator();
+
+var db = cosmos.AddDatabase("ecommerce");
+var products = db.AddContainer("products", "/categoryId");
+var customers = db.AddContainer("customers", "/customerId");
+var orders = db.AddContainer("orders", "/customerId");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(products)
+                 .WithReference(customers)
+                 .WithReference(orders);
+```
+
+## Emulator Requirements
+
+The Azure Cosmos DB emulator requires:
+
+- Docker Desktop (on Windows, Linux, or macOS)
+- At least 2 GB of memory allocated to Docker
+- Sufficient disk space for the emulator image
+
+<Note>
+On macOS and Linux, the emulator runs in a container. On Windows, you can use either the container or the native Windows emulator.
+</Note>
+
+## Additional Resources
+
+- [Azure Cosmos DB Documentation](https://learn.microsoft.com/azure/cosmos-db/)
+- [Azure Cosmos DB .NET SDK](https://learn.microsoft.com/azure/cosmos-db/nosql/sdk-dotnet-v3)
+- [Aspire Azure Cosmos DB Client Integration](/components/azure-cosmos)
+- [Azure Cosmos DB Emulator](https://learn.microsoft.com/azure/cosmos-db/emulator)

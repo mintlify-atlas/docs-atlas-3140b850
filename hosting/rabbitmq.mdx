@@ -1,0 +1,192 @@
+---
+title: RabbitMQ Hosting Integration
+description: Add RabbitMQ message broker resources to your .NET Aspire application
+---
+
+The .NET Aspire RabbitMQ hosting integration provides extension methods for adding RabbitMQ message broker resources to your distributed application.
+
+## Installation
+
+Install the RabbitMQ hosting integration package in your AppHost project:
+
+```bash
+dotnet add package Aspire.Hosting.RabbitMQ
+```
+
+## Usage
+
+### Add RabbitMQ Resource
+
+In your AppHost project (`AppHost.cs`), add a RabbitMQ resource:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+var rabbitmq = builder.AddRabbitMQ("messaging");
+
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(rabbitmq);
+
+builder.Build().Run();
+```
+
+### Consume in Service
+
+In your service project, reference the RabbitMQ resource using the client integration:
+
+```bash
+dotnet add package Aspire.RabbitMQ.Client
+```
+
+Then in `Program.cs`:
+
+```csharp
+builder.AddRabbitMQClient("messaging");
+```
+
+## API Reference
+
+### AddRabbitMQ
+
+Adds a RabbitMQ server resource to the application model. A container is used for local development.
+
+```csharp
+public static IResourceBuilder<RabbitMQServerResource> AddRabbitMQ(
+    this IDistributedApplicationBuilder builder,
+    string name,
+    IResourceBuilder<ParameterResource>? userName = null,
+    IResourceBuilder<ParameterResource>? password = null,
+    int? port = null)
+```
+
+#### Parameters
+
+- `name` - The name of the resource. This name will be used as the connection string name when referenced in a dependency.
+- `userName` - The parameter used to provide the user name for the RabbitMQ resource. If `null` a default value will be used.
+- `password` - The parameter used to provide the administrator password for the RabbitMQ resource. If `null` a random password will be generated.
+- `port` - The host port for RabbitMQ. If null, a random port will be assigned.
+
+#### Returns
+
+A reference to the `IResourceBuilder<RabbitMQServerResource>`.
+
+## Configuration Examples
+
+### Custom Port
+
+```csharp
+var rabbitmq = builder.AddRabbitMQ("messaging", port: 5672);
+```
+
+### Custom Credentials
+
+```csharp
+var username = builder.AddParameter("rabbitmq-user");
+var password = builder.AddParameter("rabbitmq-password", secret: true);
+var rabbitmq = builder.AddRabbitMQ("messaging", userName: username, password: password);
+```
+
+### Data Persistence with Volumes
+
+```csharp
+var rabbitmq = builder.AddRabbitMQ("messaging")
+                      .WithDataVolume();
+```
+
+### RabbitMQ Management UI
+
+RabbitMQ automatically includes a management UI that's accessible via a separate endpoint:
+
+```csharp
+var rabbitmq = builder.AddRabbitMQ("messaging")
+                      .WithManagementPlugin();
+```
+
+The management UI will be available on port 15672 and can be accessed through the Aspire dashboard.
+
+### Named Volumes
+
+```csharp
+var rabbitmq = builder.AddRabbitMQ("messaging")
+                      .WithDataVolume("myapp-rabbitmq-data");
+```
+
+### Bind Mounts
+
+```csharp
+var rabbitmq = builder.AddRabbitMQ("messaging")
+                      .WithDataBindMount("./rabbitmq-data");
+```
+
+## Connection Properties
+
+When you reference a RabbitMQ resource using `WithReference`, the following connection properties are made available to the consuming project.
+
+### RabbitMQ Server
+
+| Property Name | Description |
+|---------------|-------------|
+| `Host` | The hostname or IP address of the RabbitMQ server |
+| `Port` | The port number the RabbitMQ server is listening on |
+| `Username` | The username for authentication |
+| `Password` | The password for authentication |
+| `Uri` | The connection URI, with the format `amqp://{Username}:{Password}@{Host}:{Port}` |
+
+### Environment Variables
+
+Aspire exposes each property as an environment variable named `[RESOURCE]_[PROPERTY]`. For instance:
+
+- The `Uri` property of a resource called `messaging` becomes `MESSAGING_URI`
+- The `Host` property becomes `MESSAGING_HOST`
+
+## Health Checks
+
+The RabbitMQ hosting integration includes built-in health checks. When a resource is referenced as a dependency using `WaitFor`, the dependent resource will wait until the RabbitMQ resource is able to service requests.
+
+```csharp
+var api = builder.AddProject<Projects.Api>("api")
+                 .WithReference(rabbitmq)
+                 .WaitFor(rabbitmq);
+```
+
+## Common Patterns
+
+### Publisher Service
+
+```csharp
+var rabbitmq = builder.AddRabbitMQ("messaging");
+
+var publisher = builder.AddProject<Projects.Publisher>("publisher")
+                       .WithReference(rabbitmq);
+```
+
+### Consumer Service
+
+```csharp
+var rabbitmq = builder.AddRabbitMQ("messaging");
+
+var consumer = builder.AddProject<Projects.Consumer>("consumer")
+                      .WithReference(rabbitmq);
+```
+
+### Multiple Services Sharing Queue
+
+```csharp
+var rabbitmq = builder.AddRabbitMQ("messaging")
+                      .WithDataVolume();
+
+var orderService = builder.AddProject<Projects.OrderService>("orders")
+                          .WithReference(rabbitmq);
+
+var inventoryService = builder.AddProject<Projects.InventoryService>("inventory")
+                              .WithReference(rabbitmq);
+
+var notificationService = builder.AddProject<Projects.NotificationService>("notifications")
+                                 .WithReference(rabbitmq);
+```
+
+## Additional Resources
+
+- [RabbitMQ Official Documentation](https://www.rabbitmq.com/documentation.html)
+- [RabbitMQ .NET Client](https://www.rabbitmq.com/dotnet.html)
+- [Aspire RabbitMQ Client Integration](/components/rabbitmq)
